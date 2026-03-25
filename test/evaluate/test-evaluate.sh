@@ -105,5 +105,81 @@ assert_json_field "regressed is empty" "$result" '.regressed | length' '0'
 rm -f "$bench_config" "$neutral_baseline"
 
 echo ""
+echo "=== Integration Tests (test-project) ==="
+
+TEST_PROJECT="$SCRIPT_DIR/../../test-project"
+
+# Test 1: Gate failure with real test-project (has a failing test)
+echo "--- Test: gate fail with real test-project ---"
+tp_gate_config=$(mktemp)
+cat > "$tp_gate_config" <<EOF
+{
+  "gates": [
+    {"name": "node-tests", "command": "cd $TEST_PROJECT && node --test test/*.test.js"}
+  ],
+  "benchmarks": [],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$tp_gate_config" /dev/null 2>/dev/null)
+assert_json_field "tp gate_fail verdict" "$result" '.verdict' 'gate_fail'
+assert_json_field "tp failing gate name" "$result" '.gates[0].name' 'node-tests'
+assert_json_field "tp failing gate passed=false" "$result" '.gates[0].passed' 'false'
+rm -f "$tp_gate_config"
+
+# Test 2: Init mode with real benchmarks
+echo "--- Test: init mode with real benchmark ---"
+tp_bench_config=$(mktemp)
+cat > "$tp_bench_config" <<EOF
+{
+  "gates": [
+    {"name": "always-pass", "command": "true"}
+  ],
+  "benchmarks": [
+    {
+      "name": "real-metrics",
+      "command": "bash $TEST_PROJECT/benchmark/metrics.sh",
+      "metrics": [
+        {
+          "name": "test_count",
+          "extract": "json:.test_count",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$tp_bench_config" /dev/null 2>/dev/null)
+assert_json_field "tp init mode" "$result" '.mode' 'init'
+actual_test_count=$(echo "$result" | jq -r '.metrics.test_count')
+if [ "$actual_test_count" -gt 0 ] 2>/dev/null; then
+  echo "  PASS: test_count > 0 (got $actual_test_count)"
+  ((PASS++)) || true
+else
+  echo "  FAIL: test_count > 0 (got $actual_test_count)"
+  ((FAIL++)) || true
+fi
+
+# Test 3: Scoring against real baseline (neutral — no change)
+echo "--- Test: neutral verdict against real baseline ---"
+# Use the same bench config from test 2 — run init to capture current metrics
+init_result=$("$EVALUATE" "$tp_bench_config" /dev/null 2>/dev/null)
+raw_test_count=$(echo "$init_result" | jq -r '.metrics.test_count')
+tp_baseline=$(mktemp)
+cat > "$tp_baseline" <<EOF
+{"metrics":{"test_count":$raw_test_count},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}
+EOF
+result=$("$EVALUATE" "$tp_bench_config" "$tp_baseline" 2>/dev/null)
+assert_json_field "tp neutral verdict" "$result" '.verdict' 'neutral'
+assert_json_field "tp no regressions" "$result" '.regressed | length' '0'
+rm -f "$tp_bench_config" "$tp_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
