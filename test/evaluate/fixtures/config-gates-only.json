@@ -1,0 +1,9 @@
+{
+  "gates": [
+    { "name": "true-gate", "command": "true" },
+    { "name": "echo-gate", "command": "echo ok" }
+  ],
+  "benchmarks": [],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
