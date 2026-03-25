@@ -148,6 +148,108 @@ run_benchmarks() {
   done
 }
 
+# ── Scoring ───────────────────────────────────────────────────────────────
+# Returns: sets SCORE_VERDICT, SCORE_REASON, SCORE_METRICS_JSON,
+#          SCORE_IMPROVED (JSON array), SCORE_REGRESSED (JSON array),
+#          SCORE_VERDICT_LOGIC
+
+score_results() {
+  local bench_count
+  bench_count=$(jq '.benchmarks | length' "$CONFIG")
+
+  SCORE_METRICS_JSON='{}'
+  SCORE_IMPROVED='[]'
+  SCORE_REGRESSED='[]'
+
+  for (( i=0; i<bench_count; i++ )); do
+    local metric_count
+    metric_count=$(jq ".benchmarks[$i].metrics | length" "$CONFIG")
+
+    for (( j=0; j<metric_count; j++ )); do
+      local metric_name direction tolerance significance
+      metric_name=$(jq -r ".benchmarks[$i].metrics[$j].name" "$CONFIG")
+      direction=$(jq -r ".benchmarks[$i].metrics[$j].direction // \"higher_is_better\"" "$CONFIG")
+      tolerance=$(jq -r ".benchmarks[$i].metrics[$j].tolerance // .regression_tolerance" "$CONFIG")
+      significance=$(jq -r ".benchmarks[$i].metrics[$j].significance // .significance_threshold" "$CONFIG")
+
+      # Get baseline value
+      local baseline_val
+      baseline_val=$(jq -r ".metrics[\"$metric_name\"] // empty" "$BASELINE")
+
+      # Get candidate value from BENCH_METRICS
+      local candidate_val
+      candidate_val=$(echo "$BENCH_METRICS" | jq -r ".[\"$metric_name\"] // empty")
+
+      # Skip if either value is missing
+      if [ -z "$baseline_val" ] || [ -z "$candidate_val" ]; then
+        continue
+      fi
+
+      # Calculate delta_pct with bc -l
+      # Handle zero baseline
+      local delta_pct
+      if [ "$baseline_val" = "0" ]; then
+        if [ "$candidate_val" = "0" ]; then
+          delta_pct="0"
+        else
+          delta_pct="1"
+        fi
+      else
+        delta_pct=$(echo "scale=10; ($candidate_val - $baseline_val) / $baseline_val" | bc -l)
+      fi
+
+      # Normalize: if lower_is_better, negate
+      local normalized_delta
+      if [ "$direction" = "lower_is_better" ]; then
+        normalized_delta=$(echo "scale=10; -1 * $delta_pct" | bc -l)
+      else
+        normalized_delta="$delta_pct"
+      fi
+
+      # Check regression: normalized_delta < -tolerance
+      local is_regressed is_improved
+      is_regressed=$(echo "$normalized_delta < -$tolerance" | bc -l)
+      is_improved=$(echo "$normalized_delta > $significance" | bc -l)
+
+      # Build per-metric JSON
+      local metric_json
+      metric_json=$(jq -n \
+        --argjson baseline "$baseline_val" \
+        --argjson candidate "$candidate_val" \
+        --arg delta_pct "$delta_pct" \
+        --arg direction "$direction" \
+        '{baseline: $baseline, candidate: $candidate, delta_pct: ($delta_pct | tonumber), direction: $direction}')
+
+      SCORE_METRICS_JSON=$(echo "$SCORE_METRICS_JSON" | jq --arg k "$metric_name" --argjson v "$metric_json" '. + {($k): $v}')
+
+      if [ "$is_regressed" = "1" ]; then
+        SCORE_REGRESSED=$(echo "$SCORE_REGRESSED" | jq --arg m "$metric_name" '. + [$m]')
+      elif [ "$is_improved" = "1" ]; then
+        SCORE_IMPROVED=$(echo "$SCORE_IMPROVED" | jq --arg m "$metric_name" '. + [$m]')
+      fi
+    done
+  done
+
+  # Apply set logic
+  local regressed_count improved_count
+  regressed_count=$(echo "$SCORE_REGRESSED" | jq 'length')
+  improved_count=$(echo "$SCORE_IMPROVED" | jq 'length')
+
+  if [ "$regressed_count" -gt 0 ]; then
+    SCORE_VERDICT="regress"
+    SCORE_REASON="metric(s) regressed: $(echo "$SCORE_REGRESSED" | jq -r 'join(", ")')"
+    SCORE_VERDICT_LOGIC="regression_detected"
+  elif [ "$improved_count" -eq 0 ]; then
+    SCORE_VERDICT="neutral"
+    SCORE_REASON="no metrics improved beyond significance threshold"
+    SCORE_VERDICT_LOGIC="no_improvements"
+  else
+    SCORE_VERDICT="keep"
+    SCORE_REASON="improvement in: $(echo "$SCORE_IMPROVED" | jq -r 'join(", ")')"
+    SCORE_VERDICT_LOGIC="no_regressions_and_at_least_one_improvement"
+  fi
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 run_gates
@@ -176,10 +278,16 @@ else
       --argjson gates "$GATE_RESULTS" \
       '{verdict: "neutral", reason: "no benchmarks configured", gates: $gates, metrics: {}, improved: [], regressed: [], verdict_logic: "no_benchmarks"}'
   else
-    # Benchmarks present — scoring not yet implemented (future task)
+    # Score against baseline
+    score_results
     jq -n \
+      --arg verdict "$SCORE_VERDICT" \
+      --arg reason "$SCORE_REASON" \
       --argjson gates "$GATE_RESULTS" \
-      --argjson metrics "$BENCH_METRICS" \
-      '{verdict: "neutral", reason: "benchmark scoring not yet implemented", gates: $gates, metrics: $metrics, improved: [], regressed: [], verdict_logic: "pending"}'
+      --argjson metrics "$SCORE_METRICS_JSON" \
+      --argjson improved "$SCORE_IMPROVED" \
+      --argjson regressed "$SCORE_REGRESSED" \
+      --arg verdict_logic "$SCORE_VERDICT_LOGIC" \
+      '{verdict: $verdict, reason: $reason, gates: $gates, metrics: $metrics, improved: $improved, regressed: $regressed, verdict_logic: $verdict_logic}'
   fi
 fi

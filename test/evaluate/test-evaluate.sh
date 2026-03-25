@@ -65,5 +65,45 @@ assert_json_field "score is number" "$result" '.metrics.score | type' 'number'
 rm -f "$bench_config"
 
 echo ""
+echo "=== Scoring Tests ==="
+
+# Test: keep verdict — both metrics improved
+echo "--- Test: keep verdict (both metrics improved) ---"
+bench_config=$(mktemp)
+sed "s|FIXTURES_DIR|$FIXTURES|g" "$FIXTURES/config-basic.json" > "$bench_config"
+# baseline: score=40, speed_ms=160 → candidate: score=42 (+5%), speed_ms=150 (+6.25% normalized)
+result=$("$EVALUATE" "$bench_config" "$FIXTURES/baseline-basic.json" 2>/dev/null)
+assert_json_field "verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "score in improved" "$result" '.improved | contains(["score"])' 'true'
+assert_json_field "speed_ms in improved" "$result" '.improved | contains(["speed_ms"])' 'true'
+assert_json_field "regressed is empty" "$result" '.regressed | length' '0'
+assert_json_field "score baseline" "$result" '.metrics.score.baseline' '40'
+assert_json_field "score candidate" "$result" '.metrics.score.candidate' '42'
+rm -f "$bench_config"
+
+# Test: regress verdict — baseline score=50, candidate=42 → -16% regression
+echo "--- Test: regress verdict (score regressed) ---"
+regress_baseline=$(mktemp)
+echo '{"metrics":{"score":50,"speed_ms":160},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$regress_baseline"
+bench_config=$(mktemp)
+sed "s|FIXTURES_DIR|$FIXTURES|g" "$FIXTURES/config-basic.json" > "$bench_config"
+result=$("$EVALUATE" "$bench_config" "$regress_baseline" 2>/dev/null)
+assert_json_field "verdict is regress" "$result" '.verdict' 'regress'
+assert_json_field "score in regressed" "$result" '.regressed | contains(["score"])' 'true'
+rm -f "$bench_config" "$regress_baseline"
+
+# Test: neutral verdict — baseline matches candidate exactly
+echo "--- Test: neutral verdict (no change) ---"
+neutral_baseline=$(mktemp)
+echo '{"metrics":{"score":42,"speed_ms":150},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$neutral_baseline"
+bench_config=$(mktemp)
+sed "s|FIXTURES_DIR|$FIXTURES|g" "$FIXTURES/config-basic.json" > "$bench_config"
+result=$("$EVALUATE" "$bench_config" "$neutral_baseline" 2>/dev/null)
+assert_json_field "verdict is neutral" "$result" '.verdict' 'neutral'
+assert_json_field "improved is empty" "$result" '.improved | length' '0'
+assert_json_field "regressed is empty" "$result" '.regressed | length' '0'
+rm -f "$bench_config" "$neutral_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
