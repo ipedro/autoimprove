@@ -1,5 +1,13 @@
 {
   "name": "autoimprove",
+  "version": "0.1.0",
   "description": "Autonomous codebase improvement loop — modify code, evaluate against benchmarks, keep or discard via git worktrees",
-  "version": "0.1.0"
+  "author": {
+    "name": "Pedro Almeida",
+    "url": "https://github.com/ipedro"
+  },
+  "repository": "https://github.com/ipedro/autoimprove",
+  "license": "MIT",
+  "keywords": ["autoimprove", "autonomous", "improvement", "benchmarks", "experiments"],
+  "commands": "./.claude-plugin/commands/"
 }
