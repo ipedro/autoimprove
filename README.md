@@ -25,6 +25,10 @@ The orchestrator picks improvement themes (failing tests, TODOs, coverage gaps),
 ## Quick start
 
 ```bash
+# 0. Install the plugin (one-time)
+claude plugin marketplace add https://github.com/ipedro/autoimprove
+claude plugin install autoimprove
+
 # 1. Scaffold config for your project
 /autoimprove init
 
@@ -98,6 +102,26 @@ See [docs/configuration.md](docs/configuration.md) for the full schema.
 - `jq` (`brew install jq` / `apt install jq`)
 - bash 4+
 - A project with a test suite
+
+## Installation
+
+autoimprove is a Claude Code plugin. Install it once, use it in any project.
+
+**1. Add as a marketplace:**
+
+```bash
+claude plugin marketplace add https://github.com/ipedro/autoimprove
+```
+
+**2. Install the plugin:**
+
+```bash
+claude plugin install autoimprove
+```
+
+The `/autoimprove` commands are now available in every Claude Code session.
+
+> **Local dev:** If you're working inside this repo, Claude Code auto-discovers `.claude-plugin/` — no install needed.
 
 ## Documentation
 
