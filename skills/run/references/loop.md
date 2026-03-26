@@ -1,0 +1,244 @@
+# Experiment Loop + Session End
+
+Continue from where SKILL.md left off. All session state (config, baselines, state.json, counters) is already loaded.
+
+---
+
+# 3. Experiment Loop
+
+Initialize: `experiment_count = 0`, `session_keeps = 0`, `session_fails = 0`, `session_regresses = 0`, `session_neutrals = 0`.
+
+## 3a. Budget Check
+
+```
+if experiment_count >= budget.max_experiments_per_session → go to Session End
+```
+
+## 3b. Stagnation Check
+
+```
+active_themes = themes where theme_cooldowns[theme] <= 0 or not in cooldowns
+if ALL active_themes have theme_stagnation[theme] >= stagnation_window → go to Session End
+```
+
+## 3c. Theme Selection
+
+Pick a theme using weighted random from `themes.auto.priorities`. Skip themes on cooldown or stagnated.
+
+Weighted random: `P(T) = priorities[T] / sum(all eligible priorities)`.
+
+If `--theme` was passed, use that theme exclusively (unless it's on cooldown or stagnated, in which case skip).
+
+## 3d. Trust Tier Constraints
+
+Look up `trust_tier` from state.json. Defaults:
+
+| Tier | max_files | max_lines | mode |
+|------|-----------|-----------|------|
+| 0 | 3 | 150 | auto_merge |
+| 1 | 6 | 300 | auto_merge |
+| 2 | 10 | 500 | auto_merge |
+| 3 | null | null | propose_only |
+
+Read actual values from `constraints.trust_ratchet.tier_<N>`. If mode is `propose_only`, skip — Tier 3 is not in Phase 1.
+
+## 3e. Gather Recent History
+
+Read the last 5 rows from `experiments.tsv`. Format as:
+```
+- Experiment 005 (test_coverage): Added edge case tests — kept
+- Experiment 004 (lint_warnings): Removed dead code — neutral
+```
+
+Include theme, commit message, and verdict only. Do NOT include metric values, scores, or evaluation details.
+
+## 3f. Spawn Experimenter
+
+Build the experimenter prompt with:
+- Theme name
+- Constraints: `max_files`, `max_lines`
+- Forbidden paths from `constraints.forbidden_paths`
+- Test modification policy from `constraints.test_modification`
+- Recent experiment summaries (from 3e)
+
+Do NOT include: metric names, benchmark definitions, scoring logic, tolerance/significance values, current scores, evaluate-config.json contents, or trust tier number.
+
+```
+Agent(
+  prompt: "<experimenter prompt>",
+  agent: "experimenter",
+  isolation: "worktree",
+  model: "sonnet"
+)
+```
+
+Record the start time before spawning.
+
+## 3g. Collect Results
+
+When the experimenter returns:
+
+1. Get the worktree path from Agent result.
+2. Check for a commit:
+   ```bash
+   EXPERIMENTER_SHA=$(cd <worktree_path> && git rev-parse HEAD)
+   MAIN_SHA=$(git rev-parse main)
+   ```
+   If equal, experimenter made no changes → verdict `neutral`. Skip evaluation. Go to 3i.
+
+3. Get commit message:
+   ```bash
+   cd <worktree_path> && git log -1 --format=%s
+   ```
+
+4. Get changed files:
+   ```bash
+   cd <worktree_path> && git diff --name-only main...HEAD
+   ```
+
+## 3h. Evaluate
+
+1. Update `evaluate-config.json` with changed files for the coverage gate's `changed_files` array.
+
+2. Run evaluation from the worktree:
+   ```bash
+   cd <worktree_path>
+   bash scripts/evaluate.sh <abs_path>/experiments/evaluate-config.json <abs_path>/experiments/rolling-baseline.json
+   ```
+
+3. Parse JSON output:
+   ```json
+   {
+     "verdict": "keep|gate_fail|regress|neutral",
+     "reason": "human-readable explanation",
+     "gates": [...],
+     "metrics": {...},
+     "improved": [...],
+     "regressed": [...]
+   }
+   ```
+
+## 3i. Act on Verdict
+
+**gate_fail / regress / neutral:**
+```bash
+git worktree remove --force <worktree_path>
+git branch -D autoimprove/<branch_name>
+```
+Increment the appropriate counter. For `neutral`: increment `theme_stagnation[THEME]`. For `regress`: apply trust ratchet penalty (decrement `consecutive_keeps` by `regression_penalty`, demote tier if below threshold).
+
+**keep:**
+1. Rebase onto main:
+   ```bash
+   cd <worktree_path> && git rebase main
+   ```
+   On conflict: `git rebase --abort`, remove worktree, log as `rebase_fail`, increment `session_fails`, skip keep path.
+
+2. Fast-forward merge:
+   ```bash
+   cd <project_root>
+   KEEP_SHA=$(cd <worktree_path> && git rev-parse HEAD)
+   git worktree remove <worktree_path>
+   git merge --ff-only <branch_name>
+   git branch -D <branch_name>
+   ```
+
+3. Tag the commit:
+   ```bash
+   git tag "exp-<experiment_id>" HEAD
+   ```
+
+4. Update rolling baseline — run evaluate.sh init mode on the new main and write the output metrics to `experiments/rolling-baseline.json`:
+   ```bash
+   cd <project_root>
+   bash scripts/evaluate.sh experiments/evaluate-config.json /dev/null
+   ```
+
+5. Update trust ratchet: increment `consecutive_keeps`. Promote tier if threshold reached (Tier 0→1 at 5 keeps, Tier 1→2 at 15 keeps).
+
+6. Reset: `theme_stagnation[THEME] = 0`. Increment `session_keeps`.
+
+## 3j. Log Experiment
+
+Append to `experiments/experiments.tsv`:
+```
+<id>	<ISO timestamp>	<theme>	<verdict>	<improved or ->	<regressed or ->	<tokens or 0>	<wall_time>	<commit_msg or ->
+```
+
+Write `experiments/<id>/context.json`:
+```json
+{
+  "id": "007",
+  "model": "claude-sonnet-4-6",
+  "baseline_sha": "<SHA>",
+  "result_sha": "<SHA or null>",
+  "theme": "test_coverage",
+  "constraints": { "max_files": 3, "max_lines": 150 },
+  "changed_files": ["src/foo.ts"],
+  "metrics": { "test_count": { "baseline": 37, "candidate": 39, "delta_pct": 5.4 } },
+  "verdict": "keep",
+  "improved": ["test_count"],
+  "regressed": [],
+  "wall_time_seconds": 270,
+  "timestamp": "<ISO>"
+}
+```
+
+## 3k. Epoch Drift Check
+
+After every experiment, compute drift for each metric:
+```
+drift_pct = abs(rolling[metric] - epoch[metric]) / epoch[metric]
+```
+
+If any metric has drifted beyond `safety.epoch_drift_threshold` (default 5%) in the regressing direction → halt session immediately. Log: `"EPOCH DRIFT HALT: <metric> drifted <drift_pct>%"`.
+
+## 3l. Persist State
+
+Write `experiments/state.json` after every experiment to enable crash recovery.
+
+## 3m. Increment and Continue
+
+```
+experiment_count += 1 → go to 3a
+```
+
+---
+
+# 4. Session End
+
+## 4a. Set Cooldowns for Stagnated Themes
+
+For each theme where `theme_stagnation[theme] >= stagnation_window`:
+```
+theme_cooldowns[theme] = themes.auto.cooldown_per_theme
+```
+
+## 4b. Persist Final State
+
+Write `experiments/state.json` one final time.
+
+## 4c. Print Summary
+
+```
+═══════════════════════════════════════════════════
+  autoimprove session complete
+═══════════════════════════════════════════════════
+
+  Experiments run:     <count>
+  Kept:                <session_keeps>
+  Gate failures:       <session_fails>
+  Regressions:         <session_regresses>
+  Neutral:             <session_neutrals>
+
+  Trust tier:          <tier> (consecutive keeps: <n>)
+  Budget used:         <count> / <max>
+
+  Stagnated themes:    <list or "none">
+  Epoch drift:         <max drift %> (threshold: <threshold>%)
+
+  Exit reason:         <budget_exhausted | all_stagnated | epoch_drift_halt>
+═══════════════════════════════════════════════════
+```
+
+List each kept experiment with its commit message and improved metrics.
