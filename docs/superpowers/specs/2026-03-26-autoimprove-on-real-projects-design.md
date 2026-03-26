@@ -56,6 +56,8 @@ Ask: "Can an optimizer improve this metric without actually improving the thing 
 For **lossless-claude**: compression ratio is direct. test_count is proxy.
 For **xgh**: context tree quality score is direct (if deterministic). test_count is proxy.
 
+> **Caveat:** Even direct signals can be gamed by reducing scope — e.g., better compression by dropping support for edge-case inputs. This is why the hard gate (test suite) is non-negotiable: it catches functional regressions that metric improvement alone would miss. Direct signal + passing gate = genuine improvement.
+
 ---
 
 ## Principle 2: Protect the evaluator — always
@@ -87,22 +89,29 @@ A benchmark script that measures something gameable will eventually be gamed —
 
 ### Structural safety tripwires (reusable pattern)
 
-Regardless of project type, include these as secondary metrics with zero tolerance:
+Regardless of project type, include these as secondary metrics with zero tolerance. The **specific phrases and files are project-dependent** — define them based on your project's load-bearing invariants.
 
+**Pattern (adapt to your project):**
 ```bash
-# broken_constraints: key phrases must remain in critical files
+# broken_constraints: identify 2-3 invariants that must hold in your project's core files.
+# For each project, choose: which file, which phrases, what line-count floor.
 broken_constraints=0
-for phrase in "forbidden_paths" "additive only" "how your changes are scored"; do
+
+# Example for autoimprove-on-itself:
+for phrase in "forbidden_paths" "additive only" "NEVER reveal" "worktree"; do
   grep -q "$phrase" agents/experimenter.md || broken_constraints=$((broken_constraints + 1))
 done
-
-# Line-count floor: catches wholesale file gutting
 lines=$(wc -l < agents/experimenter.md)
 [ "$lines" -lt 20 ] && broken_constraints=$((broken_constraints + 1))
 
-# broken_refs: files referenced in skills must exist
+# Example for a Node.js project with an auth module:
+# for phrase in "rate_limit" "sanitize" "authenticate"; do
+#   grep -rq "$phrase" src/auth/ || broken_constraints=$((broken_constraints + 1))
+# done
+
+# broken_refs: files or modules referenced in core config must exist
 broken_refs=0
-# (project-specific implementation)
+# (project-specific: check that key imports, config references, or skill paths resolve)
 
 echo "{..., \"broken_constraints\": $broken_constraints, \"broken_refs\": $broken_refs}"
 ```
@@ -118,6 +127,17 @@ These are not improvement targets — they are safety tripwires. `broken_constra
 | Test count (if used as proxy) | higher | 0.0 | 0.01 |
 
 **Zero tolerance on safety tripwires** — the system should never allow any regression in structural integrity, even small ones.
+
+### Benchmark noise check (do this before running)
+
+Run your benchmark 3 times on an unmodified codebase:
+```bash
+bash benchmark/metrics.sh
+bash benchmark/metrics.sh
+bash benchmark/metrics.sh
+```
+
+If the primary metric varies by more than your `significance` threshold across runs, you have a noise problem. Fix it before running: average multiple runs in metrics.sh, increase the significance threshold, or choose a more stable metric. A benchmark with more variance than signal produces random keep/discard decisions that degrade the experiment log.
 
 ---
 
