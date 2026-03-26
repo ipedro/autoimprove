@@ -38,8 +38,8 @@ test_count=$(grep -c -- "--- Test:" "$DIR/test/evaluate/test-evaluate.sh" 2>/dev
 
 # broken_constraints: load-bearing invariant phrases must remain in experimenter agent
 broken_constraints=0
-for phrase in "forbidden_paths" "additive only" "NEVER reveal" "worktree"; do
-  grep -q "$phrase" "$DIR/agents/experimenter.md" 2>/dev/null || broken_constraints=$((broken_constraints + 1))
+for phrase in "forbidden_paths" "additive only" "how your changes are scored" "worktree"; do
+  grep -q "$phrase" "$DIR/agents/experimenter.md" 2>/dev/null || broken_constraints=$((broken_constraints + 1)) || true
 done
 # Line-count floor: catches wholesale file gutting
 lines=$(wc -l < "$DIR/agents/experimenter.md" 2>/dev/null || echo 0)
@@ -76,7 +76,7 @@ Expected output (exact numbers may vary, but all three keys must be present and 
 
 If `broken_constraints` > 0, check which phrase is missing:
 ```bash
-for phrase in "forbidden_paths" "additive only" "NEVER reveal" "worktree"; do
+for phrase in "forbidden_paths" "additive only" "how your changes are scored" "worktree"; do
   grep -q "$phrase" agents/experimenter.md && echo "ok: $phrase" || echo "MISSING: $phrase"
 done
 ```
