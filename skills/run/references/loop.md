@@ -151,12 +151,23 @@ Increment the appropriate counter. For `neutral`: increment `theme_stagnation[TH
 4. Update rolling baseline — run evaluate.sh init mode on the new main and write the output metrics to `experiments/rolling-baseline.json`:
    ```bash
    cd <project_root>
-   bash scripts/evaluate.sh experiments/evaluate-config.json /dev/null
+   bash scripts/evaluate.sh experiments/evaluate-config.json experiments/rolling-baseline.json
    ```
 
 5. Update trust ratchet: increment `consecutive_keeps`. Promote tier if threshold reached (Tier 0→1 at 5 keeps, Tier 1→2 at 15 keeps).
 
 6. Reset: `theme_stagnation[THEME] = 0`. Increment `session_keeps`.
+
+7. **Debate annotation (advisory only):** Run the adversarial review on the kept diff. This is post-verdict — the result never influences the decision already made.
+
+   Get the diff that was just merged:
+   ```bash
+   git diff HEAD~1 HEAD
+   ```
+
+   Spawn the review agents using the `review` skill on this diff (pass as `TARGET_CODE` directly — no need to re-parse arguments). Use `--rounds` auto-scaled to the diff size. Store the structured JSON output as `DEBATE_ANNOTATION`.
+
+   If the review fails or times out, set `DEBATE_ANNOTATION = null`. Never let a failed review block the loop.
 
 ## 3j. Log Experiment
 
@@ -180,7 +191,13 @@ Write `experiments/<id>/context.json`:
   "improved": ["test_count"],
   "regressed": [],
   "wall_time_seconds": 270,
-  "timestamp": "<ISO>"
+  "timestamp": "<ISO>",
+  "debate_annotation": {
+    "rounds": 2,
+    "confirmed": [{"severity": "medium", "file": "src/foo.ts", "line": 42, "resolution": "Add null check"}],
+    "debunked": [],
+    "summary": "1 medium finding confirmed, 0 debunked."
+  }
 }
 ```
 
