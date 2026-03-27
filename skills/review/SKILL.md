@@ -1,6 +1,6 @@
 ---
-name: review
-description: "Run an adversarial debate review on code. Use when the user invokes '/autoimprove review', asks to 'review code with debate agents', 'run debate review', or 'adversarial review'. Takes a file, diff, or PR as target."
+name: debate-review
+description: "Run an adversarial debate review on code. Use when the user invokes '/autoimprove review', asks to 'review code with debate agents', 'run debate review', 'run a review round', 'do a review round', or 'adversarial review'. Takes a file, diff, or PR as target."
 argument-hint: "[file|diff] [--rounds N] [--single-pass]"
 allowed-tools: [Read, Glob, Grep, Bash, Agent]
 ---
@@ -18,10 +18,14 @@ From the user's input, extract:
 
 If `--single-pass` was passed, set rounds to 1.
 
-If no explicit `--rounds N`, auto-scale:
-- Target < 50 lines → 1 round
-- Target < 200 lines or ≤ 5 files → 2 rounds
-- Target > 200 lines or > 5 files → 3 rounds
+If `--rounds N` was explicitly passed, use N (minimum 1). User-specified rounds always take precedence over auto-scale.
+
+If the user requests fewer rounds without `--rounds` (e.g. "quick review", "just one pass"), reduce the auto-scaled value by 1, minimum 1. Log: `"User requested quick review — rounds reduced to <N>"`.
+
+If no explicit round count or quick-review request, auto-scale based on target size:
+- 1–49 lines → 1 round
+- 50–199 lines or ≤ 5 files → 2 rounds
+- 200+ lines or > 5 files → 3 rounds
 
 ---
 
@@ -36,7 +40,7 @@ Read the file(s) using Read tool. Concatenate with file headers.
 ```bash
 git diff HEAD
 ```
-If empty, try `git diff --staged`. If still empty, tell the user there's nothing to review.
+If empty, try `git diff --staged`. If still empty, tell the user: "Nothing to review — both working tree and staging area are clean. Try: `git diff <branch>`, `git diff HEAD~1`, `/autoimprove review <file>`, or stage some changes first."
 
 Store the result as `TARGET_CODE`.
 
@@ -62,7 +66,10 @@ Prompt: Review the following code and find all issues.
 Output your findings as a single JSON object matching the schema. Nothing else.
 ```
 
-Parse the Enthusiast's JSON output. Store as `ENTHUSIAST_OUTPUT`.
+**Validate output**: Parse the Enthusiast's response as JSON.
+- If valid JSON with a non-empty `findings` array → store as `ENTHUSIAST_OUTPUT` and continue.
+- If invalid JSON → re-prompt once: `"Your previous response was not valid JSON. Return only the corrected JSON object — no prose, no markdown fences."` Re-parse. If still invalid → log `enthusiast_malformed_json` for this round, skip to next round (or abort if only round).
+- If valid JSON but `findings` is empty → note "Enthusiast found no issues" and skip 3b/3c for this round; proceed to 3e.
 
 ## 3b. Spawn Adversary
 
@@ -82,7 +89,9 @@ Prompt: Review the Enthusiast's findings and challenge them.
 Output your verdicts as a single JSON object matching the schema. Nothing else.
 ```
 
-Parse the Adversary's JSON output. Store as `ADVERSARY_OUTPUT`.
+**Validate output**: Parse the Adversary's response as JSON.
+- If valid JSON with a `verdicts` array → store as `ADVERSARY_OUTPUT` and continue.
+- If invalid JSON → re-prompt once with the same correction instruction. If still invalid → log `adversary_malformed_json`, use `ENTHUSIAST_OUTPUT` directly for Judge input (all findings treated as uncontested).
 
 ## 3c. Spawn Judge
 
@@ -108,11 +117,33 @@ Prompt: Arbitrate between the Enthusiast and Adversary.
 Output your rulings as a single JSON object matching the schema. Nothing else.
 ```
 
-Parse the Judge's JSON output. Store as `JUDGE_OUTPUT`.
+**Validate output**: Parse the Judge's response as JSON.
+- If valid JSON with a `rulings` array → store as `JUDGE_OUTPUT` and continue.
+- If invalid JSON → re-prompt once. If still invalid → log `judge_malformed_json`, record all findings as `status: unresolved`, and end the debate loop.
 
 ## 3d. Check Convergence
 
-If the Judge set `convergence: true`, stop the loop early. Record `converged_at_round`.
+Convergence is only meaningful from round 2 onward. Use a **deterministic duplicate-rate check** — do NOT rely solely on the Judge's self-reported `convergence` flag (LLMs miscalibrate this).
+
+**Duplicate-rate check (round > 1):**
+
+Collect `CURRENT_IDS` = all finding IDs the Enthusiast produced this round.
+Collect `PRIOR_IDS` = all finding IDs from all prior rounds (accumulate across rounds).
+
+Compute:
+```
+duplicate_count = count of CURRENT_IDS that have a prior_finding_id reference OR whose (file, line) matches any prior finding within match_line_range=3
+duplicate_rate = duplicate_count / len(CURRENT_IDS)   (0.0 if CURRENT_IDS is empty)
+```
+
+If `duplicate_rate >= 0.40` → stop the loop early. Record `converged_at_round = round`.
+
+**Judge convergence flag (secondary signal):**
+- If `round == 1` and Judge returned `convergence: true` → ignore. Log: `"convergence: true ignored on round 1."` Continue.
+- If `round > 1` and Judge set `convergence: true` AND duplicate_rate < 0.40 → log `"Judge signaled convergence but duplicate rate is {rate:.0%} — continuing."` Continue.
+- If both signals agree → stop early.
+
+**Calibration data:** 2 rounds = optimal for standard code review; >40% duplicate rate observed from round 3 onward in benchmarks. The threshold is empirical, not tunable per-run.
 
 ## 3e. Store Round
 
@@ -125,7 +156,7 @@ Accumulate round results into `ROUNDS` array.
 After all rounds complete, present results to the user:
 
 ```
-## Debate Review — {target} ({total_rounds} round(s))
+## Debate Review — {target} ({total_rounds} round(s){if converged: ", converged at round N"})
 
 ### Confirmed Findings
 
@@ -141,6 +172,7 @@ After all rounds complete, present results to the user:
 
 {Judge's final summary}
 {If converged: "Debate converged at round {N}."}
+{If any malformed_json errors: "Warning: {N} round(s) had agent output errors — results may be incomplete."}
 ```
 
 Also output the full structured JSON so it can be consumed programmatically.
