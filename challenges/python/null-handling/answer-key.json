@@ -1,0 +1,31 @@
+{
+  "challenge": "null-handling",
+  "language": "python",
+  "bugs": [
+    {
+      "id": "B1",
+      "file": "challenge.py",
+      "line": 45,
+      "type": "null-dereference",
+      "severity": "high",
+      "description": "get_display_name accesses user.profile.display_name without checking if user.profile is None. Will raise AttributeError when profile is absent.",
+      "fix_pattern": "if user.profile is None",
+      "fix_pattern_mode": "substring"
+    },
+    {
+      "id": "B2",
+      "file": "challenge.py",
+      "line": 77,
+      "type": "null-dereference",
+      "severity": "high",
+      "description": "format_user_card accesses user.profile.bio without checking if user.profile is None. Will raise AttributeError when profile is absent.",
+      "fix_pattern": "if user.profile is None",
+      "fix_pattern_mode": "substring"
+    }
+  ],
+  "scoring": {
+    "match_file": true,
+    "match_line_range": 3,
+    "match_type": true
+  }
+}

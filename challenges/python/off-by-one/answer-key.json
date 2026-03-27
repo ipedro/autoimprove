@@ -1,0 +1,21 @@
+{
+  "challenge": "off-by-one",
+  "language": "python",
+  "bugs": [
+    {
+      "id": "B1",
+      "file": "challenge.py",
+      "line": 24,
+      "type": "off-by-one",
+      "severity": "high",
+      "description": "Inner loop starts at i instead of i+1, allowing an element to pair with itself. range(i, ...) should be range(i + 1, ...)",
+      "fix_pattern": "range(i + 1",
+      "fix_pattern_mode": "substring"
+    }
+  ],
+  "scoring": {
+    "match_file": true,
+    "match_line_range": 3,
+    "match_type": true
+  }
+}
