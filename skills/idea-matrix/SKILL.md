@@ -1,0 +1,296 @@
+---
+name: idea-matrix
+description: "Use when the user says 'idea matrix', 'explore combinations', 'run idea matrix', '3x3 matrix', '/idea-matrix', or wants to systematically evaluate design options with parallel haiku agents. Takes a problem statement and 3+ design options, spawns 9 haiku agents to explore individual options and pairwise/composite combinations, and synthesizes a convergence report showing which design emerged strongest."
+argument-hint: "<problem statement> + <options list>"
+allowed-tools: [Read, Glob, Grep, Bash, Agent]
+---
+
+<SKILL-GUARD>
+You are NOW executing the idea-matrix skill. Do NOT invoke this skill again via the Skill tool — execute the steps below directly. Invoking it again would create an infinite loop.
+</SKILL-GUARD>
+
+Pre-digest project context, spawn 9 tool-less haiku agents in parallel to score design options and their combinations on a structured rubric, then synthesize a convergence report.
+
+---
+
+# 1. Parse Input
+
+From the user's input (or the current conversation context), extract:
+
+- **problem**: The design problem or decision being explored
+- **options**: A list of design options (minimum 3). Each option has a short label and a description.
+
+If the user provided options inline (e.g., "A: hooks, B: skill, C: stop hook"), use those directly.
+
+If the user invoked `/idea-matrix` during a brainstorming session where options were already discussed, gather the options from conversation context.
+
+If fewer than 3 options are available, ask the user to provide more before proceeding. The matrix needs at least 3 options to generate meaningful combinations.
+
+Store as:
+
+```
+PROBLEM = "<problem statement>"
+OPTIONS = [
+  { label: "A", name: "<short name>", description: "<what this option does>" },
+  { label: "B", name: "<short name>", description: "<what this option does>" },
+  { label: "C", name: "<short name>", description: "<what this option does>" },
+  ...any additional options (Alt1, Alt2, etc.)
+]
+```
+
+---
+
+# 2. Generate the 3x3 Matrix Cells
+
+From the options list, generate exactly 9 exploration cells. The matrix is **options and their combinations**:
+
+**For 3 base options (A, B, C):**
+
+| Cell | What the agent scores |
+|------|----------------------|
+| 1. A alone | Option A in isolation — full assessment |
+| 2. B alone | Option B in isolation — full assessment |
+| 3. C alone | Option C in isolation — full assessment |
+| 4. A + B | Hybrid combining A and B — synergies and conflicts |
+| 5. A + C | Hybrid combining A and C — synergies and conflicts |
+| 6. B + C | Hybrid combining B and C — synergies and conflicts |
+| 7. A + B + C | All three combined — is the full stack viable? |
+| 8. Alt 1 | First alternative/variant (if provided), else best-of-breed remix from 1-7 |
+| 9. Alt 2 | Second alternative/variant (if provided), else contrarian approach |
+
+**If the user provided more than 3 options** (e.g., 3 base + 2 alternatives), assign cells 8 and 9 to the provided alternatives.
+
+**If the user provided exactly 3 options**, cells 8 and 9 are creative synthesis:
+- Cell 8: "Best-of-breed remix" — the agent proposes its own hybrid from the best parts of each option
+- Cell 9: "Contrarian approach" — the agent challenges all 3 options and proposes something fundamentally different
+
+Store as `CELLS[1..9]`, each with a label and assignment description.
+
+---
+
+# 3. Context Pre-Digestion (Orchestrator Research Phase)
+
+**This is the critical step.** YOU (the orchestrator, running on the main model) do the hard work of researching the codebase. Haiku agents receive pre-digested context only — they never touch the codebase.
+
+**3a. Research the codebase:**
+- Read all files relevant to the design problem (architecture, config, key modules)
+- Check recent commits for context on current direction
+- Identify patterns, conventions, and constraints that would affect each option
+
+**3b. Produce an architecture brief (~500 tokens):**
+Summarize into a dense, self-contained brief that covers:
+- Project structure and key modules
+- Relevant existing patterns and conventions
+- Technical constraints (language, framework, dependencies)
+- Integration points that the options would touch
+
+**3c. Extract per-option context:**
+For each option, extract specific code patterns or files that are most relevant. This becomes part of that cell's agent prompt.
+
+**3d. Assemble agent prompts:**
+Each agent prompt should be fully self-contained at ~800 tokens total:
+- Problem statement (~100 tokens)
+- Architecture brief (~500 tokens)
+- Cell assignment + option descriptions (~100 tokens)
+- Scoring rubric (~100 tokens)
+
+Store as `BRIEF` (shared) and `CELL_CONTEXT[1..9]` (per-cell additions if needed).
+
+**Why this matters:** No tool calls = agents are faster and cheaper. Pre-digested context = haiku reasons about the right things instead of exploring blindly. The orchestrator does research; haiku does evaluation.
+
+---
+
+# 4. Dispatch 9 Haiku Agents in Parallel
+
+Spawn all 9 agents simultaneously using the Agent tool. **No tools** — agents receive everything they need in the prompt.
+
+**Agent prompt template for each cell:**
+
+```
+You are an idea explorer scoring a specific design option or combination.
+
+## Problem
+{PROBLEM}
+
+## Architecture Brief
+{BRIEF}
+
+## All Options Under Consideration
+{For each option: label, name, description}
+
+## Your Assignment
+Cell {N}: {CELL_LABEL}
+{CELL_DESCRIPTION}
+{CELL_CONTEXT if any per-cell additions}
+
+## Instructions
+1. Score this option/combination against the architecture brief
+2. For hybrid cells: focus on synergies AND conflicts between the options
+3. For creative cells (remix/contrarian): propose a concrete alternative grounded in the brief
+4. Surface non-obvious insights — the orchestrator knows the obvious trade-offs
+
+## Scoring Rubric (return as JSON, no prose)
+{
+  "cell": {N},
+  "label": "{CELL_LABEL}",
+  "thesis": "<one sentence: your position on this option BEFORE scoring>",
+  "scores": {
+    "feasibility": <1-5>,
+    "risk": <1-5>,
+    "synergy_potential": <1-5>,
+    "implementation_cost": <1-5>
+  },
+  "dealbreaker": { "flag": <true|false>, "reason": "<if true, one sentence>" },
+  "surprise": "<one non-obvious insight citing specific detail from the brief, or null>",
+  "recommendation": "<if this option wins, the first implementation step is...>",
+  "verdict": "<one sentence: pursue or not, and why>"
+}
+
+Scoring guide:
+- 5 = ideal, 4 = good, 3 = adequate, 2 = concerning, 1 = showstopper
+- Risk is inverted: 5 = lowest risk, 1 = highest risk (higher is always better)
+- Score 3 only when genuinely neutral. If all scores cluster around 3, your output is worthless — differentiate.
+- Return ONLY the JSON. No prose, no fences.
+```
+
+**Agent configuration:**
+- Model: `haiku`
+- Tools: none (agents reason about pre-digested context only)
+
+**Dispatch all 9 agents in a single parallel batch.** Do NOT dispatch sequentially.
+
+---
+
+# 5. Collect and Validate Results
+
+As agents return, parse each result:
+
+- **Valid JSON** with `scores`, `dealbreaker`, `verdict` fields: store in `RESULTS[cell_number]`
+- **Invalid JSON**: re-prompt once: `"Your response was not valid JSON. Return only the corrected JSON object."` If still invalid, record as `{ "cell": N, "label": "...", "error": "malformed output" }` and continue.
+- **Score validation**: All scores must be 1-5. If out of range, clamp to nearest valid value.
+
+Wait for all 9 agents to complete before proceeding to synthesis.
+
+---
+
+# 6. Synthesize Convergence Report
+
+Analyze all 9 results and produce a convergence report. This is YOUR analysis — not a summary of agent outputs.
+
+**6a. Build the Score Matrix**
+
+Present the full 3x3 grid with numerical scores:
+
+```
+## Idea Matrix — {PROBLEM}
+
+| Cell | Option | Feas. | Risk | Synergy | Cost | Avg | Dealbreaker | Verdict |
+|------|--------|-------|------|---------|------|-----|-------------|---------|
+| 1 | A alone | 4 | 5 | 3 | 4 | 4.0 | -- | ... |
+| 2 | B alone | 3 | 3 | 3 | 3 | 3.0 | -- | ... |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
+```
+
+**Avg** = mean of the 4 scores. Cells with `dealbreaker: true` are flagged regardless of scores.
+
+**6b. Cross-Cutting Dimension View**
+
+After the per-cell matrix, present aggregate scores BY DIMENSION across all 9 cells:
+
+```
+### Dimension Aggregates
+
+| Dimension | Avg | Min | Max | Cells scoring 1-2 |
+|-----------|-----|-----|-----|-------------------|
+| Feasibility | 3.7 | 2 | 5 | Cell 7, Cell 9 |
+| Risk | 3.2 | 1 | 5 | Cell 4 |
+| Synergy | 3.9 | 2 | 5 | Cell 3 |
+| Impl. Cost | 3.1 | 1 | 4 | Cell 7, Cell 8 |
+```
+
+This reveals which dimensions are consistent across options (all cells score similar risk) versus divergent (feasibility varies wildly), and which dimensions are the weakest overall.
+
+**6c. Identify Convergence**
+
+Rank cells by composite score (average of all 4 dimensions). Then analyze:
+- **Top scorer**: Which cell has the highest composite? Is it a solo, hybrid, or creative option?
+- **Dealbreaker filter**: Eliminate any cells flagged as dealbreakers
+- **Score band distribution**: Count cells by band — strong (4-5 avg), neutral (3 avg), weak (1-2 avg). A matrix with 7 neutral cells suggests the options are poorly differentiated.
+- **Cluster analysis**: Do hybrid cells score consistently higher than solos? Does this suggest combination is the right path?
+- **Top insights**: Cherry-pick the 3-5 most impactful surprises across all 9 cells. These are the findings that change the trade-off calculus.
+- **Risk patterns**: Are there risks that appear across multiple cells?
+
+**6d. Recommended Design**
+
+```
+### Recommended Design
+
+**Winner:** {label} — {one-line summary} (score: {avg}/5)
+**Verdict:** Go | Go with conditions | No clear winner
+
+**Why it emerged:** {2-3 sentences citing specific scores and patterns across the matrix}
+
+**Conditions** (if "Go with conditions" — these must be true for the recommended design to succeed):
+1. {specific condition from risk scores or dealbreaker analysis}
+2. {specific condition from surprise insights}
+
+**Dealbreakers avoided:** {cells eliminated and why}
+
+**Top insights across all cells:**
+- {most impactful surprise from any cell}
+- {second most impactful}
+- {third}
+
+**First step:** {recommendation field from the winning cell}
+
+**Ideas to carry forward from other cells:** {cherry-pick high-scoring aspects from non-winning cells}
+```
+
+**6e. Output Structured JSON**
+
+After the human-readable report, output the full structured data:
+
+```json
+{
+  "problem": "<problem statement>",
+  "options": [<OPTIONS array>],
+  "cells": [<RESULTS array, all 9 with scores>],
+  "ranking": [
+    { "cell": <N>, "label": "<label>", "composite": <avg>, "dealbreaker": <bool> }
+  ],
+  "by_score_band": {
+    "strong": <count of cells with avg >= 4>,
+    "neutral": <count of cells with avg >= 3 and < 4>,
+    "weak": <count of cells with avg < 3>
+  },
+  "dimension_aggregates": {
+    "feasibility": { "avg": <N>, "min": <N>, "max": <N> },
+    "risk": { "avg": <N>, "min": <N>, "max": <N> },
+    "synergy_potential": { "avg": <N>, "min": <N>, "max": <N> },
+    "implementation_cost": { "avg": <N>, "min": <N>, "max": <N> }
+  },
+  "convergence": {
+    "winner": "<cell label>",
+    "winner_cell": <cell number>,
+    "winner_composite": <avg score>,
+    "verdict_type": "go | conditional | no_clear_winner",
+    "conditions": ["<what must be true for the winner to succeed>"],
+    "reasoning": "<why this emerged — cite scores>",
+    "dealbreakers": [{ "cell": <N>, "reason": "<why>" }],
+    "top_insights": ["<most impactful surprises across all 9 cells, max 5>"],
+    "risks": ["<key risks from matrix>"],
+    "carry_forward": ["<insights from non-winning cells>"]
+  },
+  "errors": <count of malformed agent outputs>
+}
+```
+
+---
+
+# 7. Notes
+
+- **9 agents is the fixed grid.** The 3x3 structure (3 solo + 3 pairs + 1 trio + 2 wild) is the core design.
+- **Haiku only, no tools.** Agents reason about pre-digested context. The orchestrator does the codebase research.
+- **Scores enable objective comparison.** Numerical rubric eliminates ambiguity in prose-based assessments.
+- **The convergence report is the deliverable.** Lead with the synthesis and recommendation, not the raw scores.
+- **Works standalone or during brainstorming.** Can be invoked via `/idea-matrix` at any point — enriches design discussions or produces standalone analysis.
