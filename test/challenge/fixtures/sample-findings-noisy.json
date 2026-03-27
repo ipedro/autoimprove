@@ -1,0 +1,16 @@
+{
+  "rulings": [
+    { "finding_id": "F1", "final_severity": "high", "winner": "enthusiast", "resolution": "Valid off-by-one at line 12" },
+    { "finding_id": "F2", "final_severity": "medium", "winner": "enthusiast", "resolution": "Valid null-reference at line 28" },
+    { "finding_id": "F3", "final_severity": "low", "winner": "enthusiast", "resolution": "Variable naming issue" },
+    { "finding_id": "F4", "final_severity": "medium", "winner": "enthusiast", "resolution": "Missing docstring" },
+    { "finding_id": "F5", "final_severity": "high", "winner": "enthusiast", "resolution": "Potential memory leak" }
+  ],
+  "findings": [
+    { "id": "F1", "file": "challenge.py", "line": 13, "severity": "high", "description": "Off-by-one in loop" },
+    { "id": "F2", "file": "challenge.py", "line": 27, "severity": "medium", "description": "Null reference" },
+    { "id": "F3", "file": "challenge.py", "line": 5, "severity": "low", "description": "Bad variable name" },
+    { "id": "F4", "file": "challenge.py", "line": 1, "severity": "medium", "description": "Missing docstring" },
+    { "id": "F5", "file": "utils.py", "line": 42, "severity": "high", "description": "Memory leak" }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "challenge": "test-challenge",
+  "language": "python",
+  "bugs": [
+    {
+      "id": "B1",
+      "file": "challenge.py",
+      "line": 12,
+      "type": "off-by-one",
+      "severity": "high",
+      "description": "Loop uses < instead of <=",
+      "fix_pattern": "< instead of <=",
+      "fix_pattern_mode": "substring"
+    },
+    {
+      "id": "B2",
+      "file": "challenge.py",
+      "line": 28,
+      "type": "null-reference",
+      "severity": "medium",
+      "description": "Missing null check on user.profile",
+      "fix_pattern": "None check",
+      "fix_pattern_mode": "substring"
+    }
+  ],
+  "scoring": {
+    "match_file": true,
+    "match_line_range": 3,
+    "match_type": true
+  }
+}

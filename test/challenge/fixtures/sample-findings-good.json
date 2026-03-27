@@ -1,0 +1,20 @@
+{
+  "rulings": [
+    {
+      "finding_id": "F1",
+      "final_severity": "high",
+      "winner": "enthusiast",
+      "resolution": "Valid off-by-one. Line 12 uses < instead of <= for inclusive range."
+    },
+    {
+      "finding_id": "F2",
+      "final_severity": "medium",
+      "winner": "enthusiast",
+      "resolution": "Valid null-reference. Missing None check on user.profile at line 29."
+    }
+  ],
+  "findings": [
+    { "id": "F1", "file": "challenge.py", "line": 12, "severity": "high", "description": "Off-by-one in loop boundary" },
+    { "id": "F2", "file": "challenge.py", "line": 29, "severity": "medium", "description": "Null reference on user.profile" }
+  ]
+}
