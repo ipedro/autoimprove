@@ -5,6 +5,10 @@ argument-hint: "[file|diff] [--rounds N] [--single-pass]"
 allowed-tools: [Read, Glob, Grep, Bash, Agent]
 ---
 
+<SKILL-GUARD>
+You are NOW executing the adversarial-review skill. Do NOT invoke this skill again via the Skill tool — execute the steps below directly. Invoking it again would create an infinite loop.
+</SKILL-GUARD>
+
 Run the Enthusiast → Adversary → Judge debate cycle on the given target.
 
 ---

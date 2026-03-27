@@ -1,5 +1,5 @@
 ---
-name: prompt-testing
+name: autoimprove-prompt-testing
 description: Write tests for Claude Code skills and agents — triggering tests, unit tests, agent output tests, and integration tests.
 argument-hint: "[skill-name | agent-name | all]"
 ---
