@@ -37,13 +37,13 @@ fi
 
 echo "--- Test: all answer keys are valid JSON ---"
 ALL_VALID=true
-for key in $(find "$ROOT/challenges" -name "answer-key.json"); do
+while IFS= read -r key; do
   if ! jq empty "$key" 2>/dev/null; then
     echo "  FAIL: invalid JSON: $key"
     ALL_VALID=false
     ((FAIL++)) || true
   fi
-done
+done < <(find "$ROOT/challenges" -name "answer-key.json")
 if $ALL_VALID; then
   echo "  PASS: all answer-key.json files are valid JSON"
   ((PASS++)) || true
@@ -70,7 +70,7 @@ if $ALL_EXIST; then
 fi
 
 echo "--- Test: scoring script handles each real answer key ---"
-for key in $(find "$ROOT/challenges" -name "answer-key.json"); do
+while IFS= read -r key; do
   # Score with empty findings (should get F1=0, pass=false)
   EMPTY='{"rulings":[],"findings":[]}'
   tmpfile=$(mktemp)
@@ -81,7 +81,25 @@ for key in $(find "$ROOT/challenges" -name "answer-key.json"); do
   challenge=$(jq -r '.challenge' "$key")
   assert_json_field "empty findings on $challenge: f1=0" "$result" '.f1' '0'
   assert_json_field "empty findings on $challenge: pass=false" "$result" '.pass' 'false'
-done
+done < <(find "$ROOT/challenges" -name "answer-key.json")
+
+echo "--- Test: manifest bug_count matches answer-key bug array length ---"
+ALL_MATCH=true
+while IFS= read -r id; do
+  manifest_count=$(jq -r --arg id "$id" '.challenges[] | select(.id == $id) | .bug_count' "$ROOT/challenges/manifest.json")
+  key="$ROOT/challenges/$id/answer-key.json"
+  if [ ! -f "$key" ]; then continue; fi
+  actual_count=$(jq '.bugs | length' "$key")
+  if [ "$manifest_count" != "$actual_count" ]; then
+    echo "  FAIL: $id — manifest says bug_count=$manifest_count but answer-key has $actual_count bugs"
+    ALL_MATCH=false
+    ((FAIL++)) || true
+  fi
+done < <(jq -r '.challenges[].id' "$ROOT/challenges/manifest.json")
+if $ALL_MATCH; then
+  echo "  PASS: all manifest bug_counts match answer-key bug array lengths"
+  ((PASS++)) || true
+fi
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
