@@ -52,6 +52,41 @@ Store the result as `TARGET_CODE`.
 
 ---
 
+# 2.5. Initialize Telemetry Run
+
+Before the first round, set up a private run folder to capture this debate for the
+self-improvement loop.
+
+**Generate a run ID:**
+- Format: `YYYYMMDD-HHMMSS-<target-slug>` where `target-slug` is the basename of the
+  target (or `"diff"` for diff targets), lowercased, non-alphanumeric chars → `-`, max 40 chars.
+- Example: `20260327-103045-retrieve-prefetch-design`
+
+**Create the run folder:**
+```bash
+mkdir -p ~/.autoimprove/runs/<RUN_ID>
+```
+
+**Write initial `meta.json`:**
+```json
+{
+  "run_id": "<RUN_ID>",
+  "target": "<target path or diff>",
+  "date": "<ISO timestamp>",
+  "rounds_planned": <N>,
+  "rounds_completed": 0,
+  "converged_at_round": null,
+  "status": "running",
+  "model": "claude-sonnet-4-6"
+}
+```
+
+Store `RUN_ID` and `RUN_DIR=~/.autoimprove/runs/<RUN_ID>` for use in later steps.
+If the directory cannot be created (permissions, disk full), log a warning and continue —
+telemetry failure must never block the review.
+
+---
+
 # 3. Run Debate Rounds
 
 For each round (1 to N):
@@ -146,6 +181,24 @@ Convergence is only meaningful from round 2 onward.
 
 Accumulate round results into `ROUNDS` array.
 
+Write an incremental round file to the telemetry run folder (if `RUN_DIR` is set):
+
+**`$RUN_DIR/round-<N>.json`:**
+```json
+{
+  "round": <N>,
+  "run_id": "<RUN_ID>",
+  "enthusiast": <ENTHUSIAST_OUTPUT>,
+  "adversary": <ADVERSARY_OUTPUT>,
+  "judge": <JUDGE_OUTPUT>,
+  "errors": ["enthusiast_malformed_json" | "adversary_malformed_json" | "judge_malformed_json"],
+  "converged": <true|false>
+}
+```
+
+Omit the `errors` key if the array is empty. This file is written after every round so
+a partial run is recoverable even if the session is interrupted.
+
 ---
 
 # 4. Format Output
@@ -180,6 +233,64 @@ After all rounds complete, present results to the user:
 ```
 
 Also output the full structured JSON so it can be consumed programmatically.
+
+---
+
+# 4.5. Write Telemetry
+
+After formatting output, finalize the run folder (if `RUN_DIR` is set).
+
+**Write `$RUN_DIR/run.json`** — the complete structured run for downstream use:
+```json
+{
+  "run_id": "<RUN_ID>",
+  "meta": {
+    "target": "<path or diff>",
+    "date": "<ISO timestamp>",
+    "rounds_planned": <N>,
+    "rounds_completed": <actual>,
+    "converged_at_round": <N or null>,
+    "model": "claude-sonnet-4-6",
+    "judge_llm_convergence_mismatches": <count of rounds where judge said converged but deterministic check disagreed>
+  },
+  "rounds": [ <ROUNDS array> ],
+  "confirmed": [
+    { "id": "F1", "severity": "high", "winner": "adversary", "round": 1, "resolution": "..." }
+  ],
+  "debunked": [
+    { "id": "F4", "round": 1, "reason": "..." }
+  ],
+  "final_summary": "<Judge's last summary string>",
+  "total_rounds": <N>,
+  "converged_at_round": <N or null>
+}
+```
+
+**Update `$RUN_DIR/meta.json`** with final stats:
+```json
+{
+  "run_id": "<RUN_ID>",
+  "target": "<path or diff>",
+  "date": "<ISO timestamp>",
+  "rounds_planned": <N>,
+  "rounds_completed": <actual>,
+  "converged_at_round": <N or null>,
+  "status": "complete",
+  "model": "claude-sonnet-4-6",
+  "total_findings": <confirmed + debunked>,
+  "confirmed": <count>,
+  "debunked": <count>,
+  "by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0 },
+  "judge_llm_convergence_mismatches": <count>
+}
+```
+
+**Print the run folder path** at the end of the output:
+```
+📁 Run saved: ~/.autoimprove/runs/<RUN_ID>/
+```
+
+This is the last line of output — it should appear after the structured JSON dump.
 
 ---
 
