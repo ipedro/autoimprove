@@ -243,11 +243,7 @@ Rank cells by composite score (average of all 4 dimensions). Then analyze:
 
 **First step:** {recommendation field from the winning cell}
 
-**Required mitigations** (blocking — must address before proceeding):
-- {risk or conflict from non-winning cells that applies to the winner}
-
-**Recommended improvements** (non-blocking — worth carrying forward):
-- {high-scoring aspect from non-winning cells that would strengthen the winner}
+**Ideas to carry forward from other cells:** {cherry-pick high-scoring aspects from non-winning cells}
 ```
 
 **6e. Output Structured JSON**
@@ -283,8 +279,7 @@ After the human-readable report, output the full structured data:
     "dealbreakers": [{ "cell": <N>, "reason": "<why>" }],
     "top_insights": ["<most impactful surprises across all 9 cells, max 5>"],
     "risks": ["<key risks from matrix>"],
-    "required_mitigations": ["<blocking risks/conflicts from non-winning cells that apply to the winner>"],
-    "recommended_improvements": ["<non-blocking insights from non-winning cells worth carrying forward>"]
+    "carry_forward": ["<insights from non-winning cells>"]
   },
   "errors": <count of malformed agent outputs>
 }
