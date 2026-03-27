@@ -36,30 +36,29 @@ NUM_BUGS=$(jq '.bugs | length' "$ANSWER_KEY")
 # ── Identify confirmed findings ────────────────────────────────────────────────
 # Confirmed = winner != "adversary" AND final_severity != "dismissed"
 
-CONFIRMED_IDS=$(jq -r '
-  .rulings
-  | map(select(.winner != "adversary" and .final_severity != "dismissed"))
-  | map(.finding_id)
-  | .[]
-' "$FINDINGS")
-
-# Build a JSON array of confirmed findings (with file and line from findings array)
-CONFIRMED_FINDINGS=$(jq --argjson confirmed_ids "$(
-  jq '[
+# Build confirmed IDs array (F1: safe pipeline with fallback)
+CONFIRMED_IDS_JSON=$(jq '
+  [
     .rulings
     | map(select(.winner != "adversary" and .final_severity != "dismissed"))
     | .[].finding_id
-  ]' "$FINDINGS"
-)" '
+  ]' "$FINDINGS" 2>/dev/null) || CONFIRMED_IDS_JSON='[]'
+
+# Build confirmed findings with deduplication on ID (F17: prevents TP inflation from dupe IDs)
+CONFIRMED_FINDINGS=$(jq --argjson confirmed_ids "${CONFIRMED_IDS_JSON}" '
   .findings
   | map(select(.id as $id | $confirmed_ids | contains([$id])))
-' "$FINDINGS")
+  | unique_by(.id)
+' "$FINDINGS" 2>/dev/null) || CONFIRMED_FINDINGS='[]'
+
+[ -z "$CONFIRMED_FINDINGS" ] && CONFIRMED_FINDINGS='[]'
 
 TOTAL_CONFIRMED=$(echo "$CONFIRMED_FINDINGS" | jq 'length')
 
 # ── Match bugs to confirmed findings ──────────────────────────────────────────
 # For each bug in answer key, find a confirmed finding that matches:
 #   same file (if match_file=true) AND line within match_line_range
+# F2: findings with non-numeric .line are skipped (type guard in jq)
 
 TP=0
 MATCHED_FINDING_IDS='[]'
@@ -82,6 +81,7 @@ for (( i=0; i<BUG_COUNT; i++ )); do
       select(
         (.id as $id | $already_matched | contains([$id]) | not)
         and (if $match_file then .file == $file else true end)
+        and ((.line | type) == "number")
         and ((.line - $line) | if . < 0 then . * -1 else . end) <= $range
       )
     )
@@ -97,9 +97,9 @@ done
 
 FN=$(( NUM_BUGS - TP ))
 FP=$(( TOTAL_CONFIRMED - TP ))
+[ "$FP" -lt 0 ] && FP=0  # F17: guard against negative FP from dedup edge cases
 
 # ── Calculate precision, recall, F1 ───────────────────────────────────────────
-# Handle division by zero
 
 PRECISION=$(jq -n \
   --argjson tp "$TP" \

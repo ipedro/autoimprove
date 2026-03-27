@@ -64,5 +64,50 @@ assert_json_field "f1=0" "$result" '.f1' '0'
 assert_json_field "pass=false" "$result" '.pass' 'false'
 
 echo ""
+echo "--- Test: null line in finding (F2 regression) ---"
+NULL_LINE_FINDINGS='{
+  "rulings": [
+    {"finding_id": "F1", "final_severity": "high", "winner": "enthusiast", "resolution": "Valid"}
+  ],
+  "findings": [
+    {"id": "F1", "file": "challenge.py", "line": null, "severity": "high", "description": "Bug"}
+  ]
+}'
+tmpfile=$(mktemp)
+echo "$NULL_LINE_FINDINGS" > "$tmpfile"
+result=$("$SCORE" "$FIXTURES/sample-answer-key.json" "$tmpfile" 2>/dev/null)
+rm "$tmpfile"
+assert_json_field "null line: true_positives=0 (not a crash)" "$result" '.true_positives' '0'
+assert_json_field "null line: false_positives=1 (confirmed but no match)" "$result" '.false_positives' '1'
+assert_json_field "null line: pass=false" "$result" '.pass' 'false'
+
+echo ""
+echo "--- Test: duplicate finding IDs (F17 regression) ---"
+DUPE_FINDINGS='{
+  "rulings": [
+    {"finding_id": "F1", "final_severity": "high", "winner": "enthusiast", "resolution": "Valid"},
+    {"finding_id": "F1", "final_severity": "high", "winner": "enthusiast", "resolution": "Valid dupe"}
+  ],
+  "findings": [
+    {"id": "F1", "file": "challenge.py", "line": 12, "severity": "high", "description": "Bug"},
+    {"id": "F1", "file": "challenge.py", "line": 12, "severity": "high", "description": "Bug dupe"}
+  ]
+}'
+tmpfile=$(mktemp)
+echo "$DUPE_FINDINGS" > "$tmpfile"
+result=$("$SCORE" "$FIXTURES/sample-answer-key.json" "$tmpfile" 2>/dev/null)
+rm "$tmpfile"
+assert_json_field "dupe IDs: false_positives=0 (not negative)" "$result" '.false_positives' '0'
+assert_json_field "dupe IDs: true_positives=1" "$result" '.true_positives' '1'
+fp_val=$(echo "$result" | jq -r '.false_positives')
+if [ "$fp_val" -ge 0 ] 2>/dev/null; then
+  echo "  PASS: false_positives is non-negative ($fp_val)"
+  ((PASS++)) || true
+else
+  echo "  FAIL: false_positives is negative ($fp_val)"
+  ((FAIL++)) || true
+fi
+
+echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] || exit 1
