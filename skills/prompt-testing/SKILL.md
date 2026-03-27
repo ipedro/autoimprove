@@ -1,6 +1,29 @@
 ---
 name: prompt-testing
-description: "Use when writing tests for Claude Code skills or agents, creating a test suite for a plugin, verifying a skill triggers on the right prompts, or checking that agents produce correct structured output. Do NOT use for testing regular code — this is specifically for testing prompt-based components."
+description: "Use when writing tests for Claude Code skills or agents. Examples:
+
+<example>
+Context: User wants to verify their skill fires on the right prompts.
+user: \"how do I test if my skill triggers correctly?\"
+assistant: I'll use the prompt-testing skill to write triggering tests.
+<commentary>User wants to test skill triggering — prompt-testing covers this with stream-json tests.</commentary>
+</example>
+
+<example>
+Context: User wants to test an agent's output schema.
+user: \"write tests for the judge agent\"
+assistant: I'll use the prompt-testing skill to write agent output tests.
+<commentary>Agent output testing is one of the four test types covered by this skill.</commentary>
+</example>
+
+<example>
+Context: User wants a test suite for their plugin.
+user: \"create a test suite for my plugin's skills and agents\"
+assistant: I'll use the prompt-testing skill to scaffold the test suite.
+<commentary>Plugin test suite creation is the primary use case for this skill.</commentary>
+</example>
+
+Do NOT use for testing regular code — only for Claude Code plugin components (skills, agents, commands)."
 ---
 
 # Prompt Testing
