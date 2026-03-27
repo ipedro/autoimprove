@@ -1,0 +1,31 @@
+{
+  "challenge": "async-race",
+  "language": "typescript",
+  "bugs": [
+    {
+      "id": "B1",
+      "file": "challenge.ts",
+      "line": 22,
+      "type": "toctou-race-condition",
+      "severity": "high",
+      "description": "TOCTOU race: the cache is checked at line 17, then `fetchJson` is awaited. Two concurrent calls for the same URL both find the cache empty, both await fetchJson, and both write to the cache. The fix is to store a pending Promise in a separate `inflight` map before awaiting, so concurrent calls share the same in-flight request.",
+      "fix_pattern": "inflight.set(url,",
+      "fix_pattern_mode": "substring"
+    },
+    {
+      "id": "B2",
+      "file": "challenge.ts",
+      "line": 36,
+      "type": "map-mutation-during-iteration",
+      "severity": "medium",
+      "description": "Calls `cache.delete(key)` inside a `cache.forEach` callback, mutating the Map while iterating over it. The safe fix is to collect keys to delete into an array first, then delete them in a separate pass after iteration completes.",
+      "fix_pattern": "const toDelete: string[] = []",
+      "fix_pattern_mode": "substring"
+    }
+  ],
+  "scoring": {
+    "match_file": true,
+    "match_line_range": 3,
+    "match_type": true
+  }
+}

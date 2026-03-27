@@ -1,0 +1,31 @@
+{
+  "challenge": "type-narrowing",
+  "language": "typescript",
+  "bugs": [
+    {
+      "id": "B1",
+      "file": "challenge.ts",
+      "line": 35,
+      "type": "incorrect-type-narrowing",
+      "severity": "high",
+      "description": "Uses `'error' in response` to narrow to SuccessResponse, but PendingResponse also lacks an `error` field. The cast to SuccessResponse<T> succeeds at compile time but `response.data` is undefined for PendingResponse at runtime. Should use `response.status === 'success'` as the discriminant.",
+      "fix_pattern": "response.status === \"success\"",
+      "fix_pattern_mode": "substring"
+    },
+    {
+      "id": "B2",
+      "file": "challenge.ts",
+      "line": 43,
+      "type": "missing-null-check",
+      "severity": "medium",
+      "description": "Accesses `response.metadata.cached` without checking whether the optional `metadata` field is defined. TypeScript types `metadata` as `{ cached: boolean; ttl: number } | undefined`, so this throws at runtime when metadata is absent. Should use optional chaining: `response.metadata?.cached ?? false`.",
+      "fix_pattern": "response.metadata?.cached",
+      "fix_pattern_mode": "substring"
+    }
+  ],
+  "scoring": {
+    "match_file": true,
+    "match_line_range": 3,
+    "match_type": true
+  }
+}
