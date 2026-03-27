@@ -232,7 +232,22 @@ After all rounds complete, present results to the user:
 {If any malformed_json errors: "Warning: {N} round(s) had agent output errors — results may be incomplete."}
 ```
 
-Also output the full structured JSON so it can be consumed programmatically.
+Also output the full structured JSON using the `run.json` shape — confirmed and debunked
+as flat arrays, each entry tagged with the round it was discovered in:
+
+```json
+{
+  "total_rounds": 4,
+  "converged_at_round": null,
+  "confirmed": [
+    { "id": "F2", "severity": "critical", "winner": "adversary", "round": 1, "resolution": "..." }
+  ],
+  "debunked": [
+    { "id": "F4", "round": 1, "reason": "..." }
+  ],
+  "by_severity": { "critical": 1, "high": 5, "medium": 11, "low": 9 }
+}
+```
 
 ---
 
