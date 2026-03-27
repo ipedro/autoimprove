@@ -1,6 +1,22 @@
 ---
 name: challenge
-description: "Benchmark debate agents against curated code challenges with known bugs. Use when the user invokes '/autoimprove challenge', asks to 'run challenges', 'benchmark debate agents', or 'test review agents'."
+description: "Use when testing debate agent bug-finding accuracy against curated code challenges — F1 scoring, 'test debate agents on challenges', 'benchmark agents'. Examples:
+
+<example>
+Context: User wants to measure how accurately agents find bugs.
+user: \"test debate agents on the challenge suite\"
+assistant: I'll use the challenge skill to score agents with F1 metrics.
+<commentary>Testing agent accuracy — challenge skill, not prompt-testing.</commentary>
+</example>
+
+<example>
+Context: User wants F1 scores on a language subset.
+user: \"benchmark agents on python challenges\"
+assistant: I'll use the challenge skill to score agents on the Python suite.
+<commentary>Benchmarking with filter — challenge skill.</commentary>
+</example>
+
+Do NOT use for writing tests for skills/agents (use prompt-testing instead)."
 argument-hint: "[--suite puzzles|all] [--language python|typescript|go|rust|all]"
 allowed-tools: [Read, Bash, Glob, Grep, Agent]
 ---

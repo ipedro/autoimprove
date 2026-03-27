@@ -1,6 +1,20 @@
 ---
 name: init
-description: "This skill should be used when the user invokes \"/autoimprove init\", asks to \"set up autoimprove\", \"scaffold autoimprove.yaml\", \"configure autoimprove for my project\", or wants to start using autoimprove on a new codebase."
+description: "Use when setting up autoimprove on a new project — scaffolding autoimprove.yaml, configuring gates, benchmarks, and experiment settings. Examples:
+
+<example>
+Context: User wants to start using autoimprove on their project.
+user: \"set up autoimprove for my project\"
+assistant: I'll use the init skill to scaffold autoimprove.yaml with gates and benchmarks.
+<commentary>Initial setup of autoimprove — init skill.</commentary>
+</example>
+
+<example>
+Context: User has a new codebase and wants to configure autoimprove.
+user: \"configure autoimprove for this repo\"
+assistant: I'll use the init skill to create the autoimprove configuration.
+<commentary>Project onboarding — init skill.</commentary>
+</example>"
 allowed-tools: [Read, Write, Edit, Bash, Glob]
 ---
 

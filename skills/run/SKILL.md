@@ -1,6 +1,20 @@
 ---
 name: run
-description: "This skill should be used when the user invokes \"/autoimprove run\", asks to \"start an improvement session\", \"run autoimprove\", \"run the improvement loop\", or \"run experiments\" on a codebase."
+description: "Use when starting an autoimprove experiment session — running the grind loop, experimenting on a codebase, keeping or discarding changes via git worktrees. Examples:
+
+<example>
+Context: User wants to start the autoimprove improvement loop.
+user: \"start an autoimprove session on this project\"
+assistant: I'll use the run skill to start the experiment loop.
+<commentary>Starting the grind loop — run skill.</commentary>
+</example>
+
+<example>
+Context: User wants to run a focused experiment with a specific theme.
+user: \"run autoimprove with the error-handling theme\"
+assistant: I'll use the run skill to start an experiment session focused on error handling.
+<commentary>Themed experiment run — run skill.</commentary>
+</example>"
 argument-hint: "[--experiments N] [--theme THEME]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---

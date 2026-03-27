@@ -1,6 +1,20 @@
 ---
 name: report
-description: "This skill should be used when the user invokes \"/autoimprove report\", asks for a \"session summary\", \"morning report\", \"what did autoimprove do\", \"experiment results\", \"what was kept\", or wants to review recent autoimprove activity."
+description: "Use when reviewing autoimprove experiment results — what was kept, discarded, score trends, session summary. Examples:
+
+<example>
+Context: User wants to see what autoimprove did in the last session.
+user: \"show me the autoimprove report\"
+assistant: I'll use the report skill to summarize recent experiment results.
+<commentary>Reviewing session results — report skill.</commentary>
+</example>
+
+<example>
+Context: User wants to know what improvements were kept.
+user: \"what experiments were kept from the last run?\"
+assistant: I'll use the report skill to show kept experiments and score improvements.
+<commentary>Experiment review — report skill.</commentary>
+</example>"
 allowed-tools: [Read, Bash]
 ---
 
