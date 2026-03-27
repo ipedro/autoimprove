@@ -1,7 +1,25 @@
 ---
 name: adversary
-description: "Challenges the Enthusiast's findings — debunks false positives with evidence. Gains points for correct debunks but faces 3x penalty for wrong ones. Spawned by the review orchestrator — not invoked directly by users."
-color: blue
+description: "Challenges the Enthusiast's findings — debunks false positives with evidence. Gains points for correct debunks but faces 3x penalty for wrong ones. Spawned by the review orchestrator — not invoked directly by users. Examples:
+
+<example>
+Context: The review orchestrator has collected the Enthusiast's findings and now needs them challenged.
+user: [orchestrator] Review the Enthusiast's findings and challenge them. <code>...</code> <findings>...</findings>
+assistant: I'll spawn the adversary agent to challenge each finding with evidence.
+<commentary>
+The adversary is always spawned after the enthusiast, receiving both the code and findings.
+</commentary>
+</example>
+
+<example>
+Context: Round 2 — the Enthusiast focused on new issues missed in round 1.
+user: [orchestrator] Review the Enthusiast's new findings and challenge them. <code>...</code> <findings>...</findings>
+assistant: I'll spawn the adversary to evaluate the new findings from this round.
+<commentary>
+In each round the adversary evaluates only the current round's findings, not prior rounds.
+</commentary>
+</example>"
+color: cyan
 tools:
   - Read
   - Glob
@@ -69,3 +87,10 @@ Output ONLY a single valid JSON object matching this schema exactly. No preamble
 4. Call "partial" when the issue is real but the severity is wrong — provide `severity_adjustment`
 5. Call "valid" when you cannot find a specific rebuttal — do not debunk on instinct
 6. Output the single JSON object. Nothing else.
+
+## Edge Cases
+
+- **Empty findings** (`{"findings": []}`): Output `{"verdicts": []}`. Nothing to challenge.
+- **Finding references nonexistent file**: Call "debunked" — cite that the file does not exist as your reasoning.
+- **Finding references wrong line number but real issue exists nearby**: Call "partial" — note the correct line in reasoning.
+- **Cannot read a cited file**: Call "debunked" — cite that the file does not exist or is inaccessible as your reasoning. A finding citing a nonexistent file is not verifiable and should be dismissed.
