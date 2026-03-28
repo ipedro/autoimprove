@@ -219,24 +219,27 @@ for REPO in "${REPO_NAMES[@]}"; do
     # Write YAML signal entry consumed by /autoimprove run pipeline
     if [ "$SIGNAL_VALID" = "1" ]; then
       SIGNAL_FILE="${STATE_DIR}/xgh-signal-${LATEST_SHA_SHORT}.yaml"
-      python3 - <<PYEOF
-import yaml, time
+      SIGNAL_FILE_PATH="$SIGNAL_FILE" REPO_NAME="$REPO" MERGE_SHA="$LATEST_SHA" \
+        SPRINT_PR_COUNT_VAL="$SPRINT_PR_COUNT" FINDINGS_VAL="$FINDINGS" \
+        python3 - <<'PYEOF'
+import yaml, time, os
 signal = {
     'source': 'github',
     'project': 'xgh',
-    'repo': '$REPO',
-    'merge_sha': '$LATEST_SHA',
+    'repo': os.environ['REPO_NAME'],
+    'merge_sha': os.environ['MERGE_SHA'],
     'timestamp_iso': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
     'tags': ['project:xgh', 'source:github'],
     'metrics': {
-        'merged_per_sprint': int('$SPRINT_PR_COUNT' or 0),
-        'findings_per_pr': int('$FINDINGS' or 0),
+        'merged_per_sprint': int(os.environ.get('SPRINT_PR_COUNT_VAL') or 0),
+        'findings_per_pr': int(os.environ.get('FINDINGS_VAL') or 0),
         'coverage_delta': None,
     },
 }
-with open('$SIGNAL_FILE', 'w') as f:
+signal_file = os.environ['SIGNAL_FILE_PATH']
+with open(signal_file, 'w') as f:
     yaml.dump(signal, f, default_flow_style=False)
-print('Signal written: $SIGNAL_FILE')
+print(f'Signal written: {signal_file}')
 PYEOF
       log "SIGNAL xgh: metrics written -> $SIGNAL_FILE"
     fi
