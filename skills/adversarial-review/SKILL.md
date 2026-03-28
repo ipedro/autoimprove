@@ -308,7 +308,30 @@ After formatting output, finalize the run folder (if `RUN_DIR` is set).
 📁 Run saved: ~/.autoimprove/runs/<RUN_ID>/
 ```
 
-This is the last line of output — it should appear after the structured JSON dump.
+This is the last line of output — it should appear after the structured JSON dump and the Self-Assessment section.
+
+**Write Self-Assessment section** immediately before the run folder path line:
+
+```markdown
+## Self-Assessment
+- Model used: [opus/sonnet/haiku]
+- Could cheaper model have done this? [1=definitely haiku, 2=probably haiku, 3=toss-up, 4=probably needed this tier, 5=this tier was essential]
+- Reason: [1 sentence]
+```
+
+Populate each field honestly:
+- **Model used**: the model executing this review (e.g. `sonnet`, `opus`, `haiku`)
+- **Could cheaper model have done this?**: score 1–5 based on actual complexity of the target reviewed. Simple config files, small diffs, single-function changes → lean toward 1–2. Complex architectural code, multi-file refactors, security-sensitive logic → lean toward 4–5. Be honest — this data feeds the model-selection calibration loop.
+- **Reason**: one sentence explaining the score (e.g. "The target was a 12-line config change with no logic complexity — haiku handles this easily.").
+
+Also persist the self-assessment in `$RUN_DIR/meta.json` under a `self_assessment` key:
+```json
+"self_assessment": {
+  "model_used": "sonnet",
+  "cheaper_model_score": 2,
+  "reason": "Small config diff with no architectural complexity."
+}
+```
 
 ---
 
