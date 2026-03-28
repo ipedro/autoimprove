@@ -1,5 +1,9 @@
 #!/bin/bash
-# autoimprove-trigger.sh — Poll merged PRs on target repos and trigger /autoimprove run
+# autoimprove-trigger.sh — Poll merged PRs on target repos and collect autoimprove signals
+#
+# NOTE (v1): This script collects signals only. Run /autoimprove run manually in a
+# Claude Code session to process collected signals. The --print mode cannot load
+# plugins or spawn subagents, so direct invocation is deferred to v2.
 #
 # Intended use: Add to ~/.xgh/ingest.yaml schedule.jobs at cron: "*/10 * * * *"
 # Then copy/symlink to ~/.xgh/scripts/autoimprove-trigger.sh
@@ -46,7 +50,7 @@ jobs.append({
     'name': 'autoimprove-trigger',
     'cron': '*/10 * * * *',
     'command': '/bin/bash $HOME/.xgh/scripts/autoimprove-trigger.sh --quiet',
-    'description': 'Poll merged PRs on claudinho/xgh/lossless-claude, trigger /autoimprove run on new merges',
+    'description': 'Poll merged PRs on claudinho/xgh/lossless-claude, trigger /autoimprove-run on new merges',
 })
 cfg['schedule']['jobs'] = jobs
 
@@ -184,10 +188,7 @@ for REPO in "${REPO_NAMES[@]}"; do
   log "TRIGGER $REPO: new merge (${LAST_SHA_SHORT:-none} -> ${LATEST_SHA_SHORT})"
 
   # --- xgh metrification: collect signal entry on every merge (autoimprove#7) ---
-  IS_XGH=0
-  SHOULD_RUN=1
   if echo "$REPO" | grep -q "extreme-go-horse/xgh"; then
-    IS_XGH=1
 
     # Collect xgh metrics: sprint PR count + adversarial findings on latest PR
     SPRINT_PR_COUNT=$(gh pr list --repo "$REPO" --state merged --limit 20 \
@@ -272,24 +273,13 @@ with open(state_file, 'w') as f:
     yaml.dump(d, f, default_flow_style=False)
 PYEOF
     if [ $(( XGH_TRIGGER_COUNT % 5 )) -ne 0 ]; then
-      log "SKIP xgh /autoimprove run: allocation gate (trigger $XGH_TRIGGER_COUNT/5, signal collected)"
-      SHOULD_RUN=0
+      log "SKIP xgh signal: allocation gate (trigger $XGH_TRIGGER_COUNT/5, signal collected)"
+      TRIGGERED=$(( TRIGGERED + 1 ))
+      continue
     fi
   fi
 
-  # Trigger /autoimprove run in the repo directory (detached)
-  CLAUDE_CMD=$(command -v claude 2>/dev/null || echo "claude")
-  if [ "$SHOULD_RUN" = "1" ]; then
-    (
-      cd "$LOCAL_PATH" 2>/dev/null || {
-        log "ERROR $REPO: cannot cd to $LOCAL_PATH"
-        exit 0
-      }
-      "$CLAUDE_CMD" --print --dangerously-skip-permissions \
-        "/autoimprove run" >> "$LOG_FILE" 2>&1
-      log "DONE $REPO: autoimprove run completed"
-    ) &
-  fi
+  log "INFO $REPO: signal collected — run /autoimprove run in an active Claude Code session to process"
 
   TRIGGERED=$(( TRIGGERED + 1 ))
 done
