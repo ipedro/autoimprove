@@ -285,9 +285,14 @@ PYEOF
         log "ERROR $REPO: cannot cd to $LOCAL_PATH"
         exit 0
       }
-      "$CLAUDE_CMD" --print --dangerously-skip-permissions \
-        "/autoimprove run" >> "$LOG_FILE" 2>&1
-      log "DONE $REPO: autoimprove run completed"
+      CLAUDE_OUTPUT=$("$CLAUDE_CMD" --print --dangerously-skip-permissions \
+        "/autoimprove run" 2>&1)
+      echo "$CLAUDE_OUTPUT" >> "$LOG_FILE"
+      if echo "$CLAUDE_OUTPUT" | grep -q "Unknown skill"; then
+        log "ERROR $REPO: autoimprove skill not found — check plugin installation"
+      else
+        log "DONE $REPO: autoimprove run completed"
+      fi
     ) &
   fi
 
