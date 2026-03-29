@@ -2811,5 +2811,86 @@ fi
 rm -f "$keep_prefix_config" "$keep_prefix_baseline"
 
 echo ""
+echo "=== Init Mode Absent Fields Tests ==="
+
+# Test: init mode output does NOT include improved, regressed, or verdict_logic fields
+# evaluate.sh emits only {mode, gates, metrics} in init mode. None of the scoring fields
+# (improved, regressed, verdict, verdict_logic) should be present.
+echo "--- Test: init mode output has no improved, regressed, or verdict_logic fields ---"
+init_absent_config=$(mktemp)
+cat > "$init_absent_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "init-absent-bench",
+      "command": "echo '{\"score\": 42}'",
+      "metrics": [{"name": "score", "extract": "json:.score", "direction": "higher_is_better", "tolerance": 0.02, "significance": 0.01}]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$init_absent_config" /dev/null 2>/dev/null)
+assert_eq "init-absent: no improved field" "false" "$(echo "$result" | jq 'has("improved")')"
+assert_eq "init-absent: no regressed field" "false" "$(echo "$result" | jq 'has("regressed")')"
+assert_eq "init-absent: no verdict_logic field" "false" "$(echo "$result" | jq 'has("verdict_logic")')"
+assert_json_field "init-absent: mode is init" "$result" '.mode' 'init'
+rm -f "$init_absent_config"
+
+# Test: gate fail in init mode (no baseline) still produces gate_fail verdict, not init mode output
+# evaluate.sh runs gates first, before checking INIT_MODE. A failing gate short-circuits to
+# gate_fail output regardless of whether a baseline was supplied.
+echo "--- Test: gate fail with no baseline → gate_fail verdict (not init mode) ---"
+gate_fail_init_config=$(mktemp)
+echo '{"gates":[{"name":"init-fail-gate","command":"false"}],"benchmarks":[],"regression_tolerance":0.02,"significance_threshold":0.01}' > "$gate_fail_init_config"
+result=$("$EVALUATE" "$gate_fail_init_config" /dev/null 2>/dev/null)
+assert_json_field "gate-fail-init: verdict is gate_fail (not init)" "$result" '.verdict' 'gate_fail'
+assert_eq "gate-fail-init: no mode field (gate_fail preempts init)" "false" "$(echo "$result" | jq 'has("mode")')"
+assert_json_field "gate-fail-init: verdict_logic is gate_fast_fail" "$result" '.verdict_logic' 'gate_fast_fail'
+rm -f "$gate_fail_init_config"
+
+# Test: no_benchmarks verdict_logic value is exactly "no_benchmarks" (distinct from "no_improvements")
+# When benchmark_count=0 and a baseline is present, evaluate.sh emits verdict_logic: "no_benchmarks".
+# This path is different from the scoring path that emits verdict_logic: "no_improvements".
+echo "--- Test: zero benchmarks with baseline → verdict_logic is exactly 'no_benchmarks' (not 'no_improvements') ---"
+no_bench_vl_config=$(mktemp)
+echo '{"gates":[{"name":"pass","command":"true"}],"benchmarks":[],"regression_tolerance":0.02,"significance_threshold":0.01}' > "$no_bench_vl_config"
+no_bench_vl_baseline=$(mktemp)
+echo '{"metrics":{"score":42},"sha":"abc","timestamp":"2026-03-25T00:00:00Z"}' > "$no_bench_vl_baseline"
+result=$("$EVALUATE" "$no_bench_vl_config" "$no_bench_vl_baseline" 2>/dev/null)
+assert_json_field "no-bench-vl: verdict_logic is no_benchmarks" "$result" '.verdict_logic' 'no_benchmarks'
+assert_json_field "no-bench-vl: verdict is neutral" "$result" '.verdict' 'neutral'
+# Confirm it is NOT the scoring-path value
+assert_eq "no-bench-vl: verdict_logic is not no_improvements" "false" "$([ "$(echo "$result" | jq -r '.verdict_logic')" = "no_improvements" ] && echo true || echo false)"
+rm -f "$no_bench_vl_config" "$no_bench_vl_baseline"
+
+# Test: three passing gates all appear in init mode output with passed=true
+# Verifies that run_gates accumulates results for all gates (not just the last) when all pass.
+echo "--- Test: three passing gates all appear in output ---"
+three_gates_config=$(mktemp)
+cat > "$three_gates_config" <<EOF
+{
+  "gates": [
+    {"name": "gate-alpha", "command": "true"},
+    {"name": "gate-beta",  "command": "true"},
+    {"name": "gate-gamma", "command": "true"}
+  ],
+  "benchmarks": [],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$three_gates_config" /dev/null 2>/dev/null)
+assert_json_field "three-gates: 3 gates in output" "$result" '.gates | length' '3'
+assert_json_field "three-gates: gate-alpha passed" "$result" '.gates[0].passed' 'true'
+assert_json_field "three-gates: gate-beta passed"  "$result" '.gates[1].passed' 'true'
+assert_json_field "three-gates: gate-gamma passed" "$result" '.gates[2].passed' 'true'
+assert_json_field "three-gates: gate-alpha name correct" "$result" '.gates[0].name' 'gate-alpha'
+assert_json_field "three-gates: gate-gamma name correct" "$result" '.gates[2].name' 'gate-gamma'
+rm -f "$three_gates_config"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
