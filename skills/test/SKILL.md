@@ -148,3 +148,48 @@ If any suite failed:
 - Note: hard gates in the run loop execute these suites — a failing suite blocks experiment evaluation.
 
 If all suites passed, print: `All clear — safe to run /autoimprove run.`
+
+---
+
+# 7. When NOT to Use
+
+- **Investigating a specific failing test** — run the script directly (`bash test/challenge/test-score-challenge.sh`) for unfiltered output.
+- **Checking code style or formatting** — that is a gate concern; use the `run` skill which invokes gates via `evaluate.sh`.
+- **Continuous integration** — CI should call the scripts directly; this skill is for interactive review only.
+
+---
+
+# 8. Edge Cases
+
+**Missing script for a requested suite**
+
+If the user asks for a specific suite (e.g., `harvest`) but its script does not exist, print:
+```
+Suite 'harvest' not found: expected test/harvest/test-harvest.sh
+Run /autoimprove test all to see which suites are available.
+```
+Do not fall through silently.
+
+**Missing binary dependency**
+
+If a suite exits non-zero with `command not found` in its output, surface the dependency name explicitly:
+```
+[FAIL] test/evaluate/test-evaluate.sh — missing dependency: jq
+Install with: brew install jq
+```
+
+**Suite hangs (no output for > 30 s)**
+
+Report the suite as timed-out rather than waiting indefinitely:
+```
+[TIMEOUT] test/challenge/test-integration.sh — no output after 30s
+Re-run manually: bash test/challenge/test-integration.sh
+```
+
+---
+
+# 9. Integration Notes
+
+- **Before `/autoimprove run`** — the `run` skill's hard gates call these same scripts. A passing `test` run confirms the baseline is clean before the experiment loop starts.
+- **After a KEEP verdict** — re-run `test` to catch regressions the experimenter introduced that gates did not catch (gate commands are configurable and may be narrower than these suites).
+- **CI hook** — add `bash test/challenge/test-score-challenge.sh && bash test/evaluate/test-evaluate.sh` as a pre-push hook to keep the scorer and evaluator in sync.

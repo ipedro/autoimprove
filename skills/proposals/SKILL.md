@@ -209,3 +209,46 @@ Next run with /autoimprove run will execute <A> approved proposal(s).
 - Proposal files in `experiments/` are never modified by this skill — they are read-only artifacts written by the proposer agent.
 - If `experiments/proposals-decisions.json` becomes corrupted (invalid JSON), print an error and stop. Do NOT attempt to repair it automatically.
 - The `/autoimprove run` skill reads `proposals-decisions.json` to load approved proposals before the Phase 2 experiment loop begins.
+
+---
+
+# 8. When NOT to Use
+
+- **Starting a grind session** — use `/autoimprove run`. This skill only manages decisions; it does not execute experiments.
+- **Generating proposals** — proposals are written by the proposer agent when the grind loop stagnates. You cannot draft proposals through this skill.
+- **Viewing the experiment log** — use `/autoimprove history` to browse past experiments and verdicts.
+
+---
+
+# 9. Edge Cases
+
+**Bulk approval**
+
+To approve multiple proposals at once, issue separate `approve` commands for each. There is no `--all` flag — bulk approval bypasses the blocking-dependency check and is intentionally unsupported.
+
+**Re-deciding a previously rejected proposal**
+
+Decisions are append-only. To reverse a rejection, issue `approve <N>` — the new decision is appended and `run` uses the most recent entry. The prior rejection is preserved in the audit trail.
+
+**Proposal file missing after decisions were recorded**
+
+If `proposals-decisions.json` references a proposal file that no longer exists on disk, print a warning but do not fail:
+```
+Warning: source file for proposal #N not found on disk (experiments/proposals-2026-03-01.md).
+Decision is preserved in proposals-decisions.json.
+```
+
+**Multiple proposal files with overlapping `#N` identifiers**
+
+Use the most recent file's version (by file mtime or lexicographic sort descending). Print a notice if a conflict was resolved:
+```
+Note: Proposal #3 found in 2 files — using most recent (proposals-2026-03-25.md).
+```
+
+---
+
+# 10. Integration Notes
+
+- **Phase 2 lifecycle**: stagnation detected by `run` → proposer agent writes `experiments/proposals-*.md` → human reviews via this skill → approved proposals are loaded by next `run` session.
+- **Blocking graph**: proposals may declare dependencies on each other via the `Blocking:` field. The `approve` subcommand enforces this DAG — resolve dependencies bottom-up.
+- **Deferred vs. rejected**: defer when the proposal is valid but the timing is wrong (e.g., blocked by in-flight work). Reject when the proposal direction is wrong or too risky. The `run` skill skips both deferred and rejected proposals.

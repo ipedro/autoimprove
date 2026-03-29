@@ -197,3 +197,41 @@ These must hold throughout execution. If any is violated, halt and report.
 ## Additional Resources
 
 - **`references/loop.md`** — Full experiment loop (steps 3a–3m) and session end (steps 4a–4c)
+
+---
+
+# When NOT to Use
+
+- **Reviewing pending proposals** — use `/autoimprove proposals list` to inspect and approve Phase 2 proposals before they run.
+- **Browsing past experiments** — use `/autoimprove history` for filtered log views.
+- **Running tests in isolation** — use `/autoimprove test` to verify suites without launching the grind loop.
+- **One-off manual code improvement** — this skill drives automated, scored experiments. For a single targeted fix, edit files directly.
+
+---
+
+# Common Failure Patterns
+
+**Baseline fails a gate**
+
+If `evaluate.sh` in init mode reports a gate failure, `run` will stop before the first experiment. Fix the underlying test/lint failure first. Run `/autoimprove test` to locate the issue.
+
+**Stale worktrees from a crashed session**
+
+Step 2f handles crash recovery automatically. If you see unexpected `autoimprove/` worktrees listed by `git worktree list` after a crash, re-running `run` will clean them up before starting the loop. Do not manually delete them with `git worktree remove` — let the skill do it so the TSV is updated correctly.
+
+**Experiment loop runs 0 experiments**
+
+Causes: all themes are on cooldown, `max_experiments_per_session` is 0, or `--theme THEME` was passed for a theme on cooldown. Check `experiments/state.json` for `theme_cooldowns`. Reduce `cooldown_per_theme` in `autoimprove.yaml` or run without `--theme` to use weighted-random selection.
+
+**Rebase conflict on KEEP**
+
+If the experimenter's branch can't rebase cleanly onto `main`, the experiment is discarded (invariant 6). This is expected when concurrent changes landed. The next experiment gets a fresh worktree from the updated base.
+
+---
+
+# Integration Notes
+
+- **Full pipeline order**: `/autoimprove init` → `/autoimprove test` → `/autoimprove run` → `/autoimprove report`.
+- **Phase 2 (proposals)**: when the keep rate drops below 25% for 3 consecutive sessions, `run` triggers the proposer agent. Review the output with `/autoimprove proposals` before the next `run` session picks them up.
+- **evaluate-config.json is regenerated every session** (step 2b) — changes to `autoimprove.yaml` take effect immediately on the next `run` call.
+- **Token budget**: each experiment spawns an Agent; for N experiments, expect roughly N × (experimenter tokens + evaluate.sh overhead). Start with `--experiments 3` on a new project to calibrate cost before raising the budget.
