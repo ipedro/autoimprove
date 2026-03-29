@@ -143,6 +143,37 @@ Filter for worktrees whose path contains `autoimprove/`. For each orphan (no ver
 
 ---
 
+# 2g. Step 0 — Harvest Signals (automatic)
+
+Before entering the experiment loop, run the signal harvester to check for anomalies:
+
+```bash
+HARVEST_OUTPUT=$(mktemp)
+bash scripts/harvest.sh \
+  --signal-dir ~/.claude/signals \
+  --baseline experiments/signals-baseline.json \
+  --output "$HARVEST_OUTPUT"
+```
+
+**Theme override logic:**
+- If harvest output contains anomalies with severity `high` or `critical`:
+  → Use the `suggested_theme` from the highest-severity anomaly (overrides random selection)
+- If only `medium` anomalies or no anomalies:
+  → Fall back to normal weighted-random theme selection
+- If harvest fails (non-zero exit, missing baseline):
+  → Proceed with random theme selection (harvester never blocks the loop)
+
+Read the harvest output:
+```bash
+HIGH_THEME=$(jq -r '.anomalies[] | select(.severity == "critical" or .severity == "high") | .suggested_theme' "$HARVEST_OUTPUT" 2>/dev/null | head -1)
+if [ -n "$HIGH_THEME" ]; then
+  echo "Anomaly-driven theme: $HIGH_THEME"
+  THEME="$HIGH_THEME"
+fi
+```
+
+---
+
 # 3. Experiment Loop
 
 Read `references/loop.md` and execute the full experiment loop (sections 3a–3m) and session end (section 4). Maintain all session state (counters, config, baselines) in this same context throughout — do not delegate to a subagent.
