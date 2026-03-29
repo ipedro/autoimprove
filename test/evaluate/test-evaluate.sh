@@ -438,5 +438,120 @@ fi
 rm -f "$malformed_config"
 
 echo ""
+echo "=== lower_is_better Improvement Tests ==="
+
+# Test: lower_is_better improvement → keep
+# latency_ms: baseline=200, candidate=150 → delta=-25%, normalized=+25% > significance=0.02 → improved → keep
+echo "--- Test: lower_is_better improvement → keep ---"
+lib_improve_baseline=$(mktemp)
+echo '{"metrics":{"latency_ms":200},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$lib_improve_baseline"
+lib_improve_config=$(mktemp)
+cat > "$lib_improve_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "lib-bench",
+      "command": "echo '{\"latency_ms\": 150}'",
+      "metrics": [
+        {
+          "name": "latency_ms",
+          "extract": "json:.latency_ms",
+          "direction": "lower_is_better",
+          "tolerance": 0.05,
+          "significance": 0.02
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.05,
+  "significance_threshold": 0.02
+}
+EOF
+result=$("$EVALUATE" "$lib_improve_config" "$lib_improve_baseline" 2>/dev/null)
+assert_json_field "lower_is_better improvement verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "latency_ms in improved list" "$result" '.improved | contains(["latency_ms"])' 'true'
+assert_json_field "no regressions for lower_is_better improvement" "$result" '.regressed | length' '0'
+rm -f "$lib_improve_config" "$lib_improve_baseline"
+
+# Test: lower_is_better exactly at significance boundary → neutral
+# latency_ms: baseline=100, candidate=95 → delta=-5%, normalized=+5%; significance=0.05 → 0.05 > 0.05 is FALSE → neutral
+echo "--- Test: lower_is_better at significance boundary → neutral ---"
+lib_boundary_baseline=$(mktemp)
+echo '{"metrics":{"latency_ms":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$lib_boundary_baseline"
+lib_boundary_config=$(mktemp)
+cat > "$lib_boundary_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "lib-boundary-bench",
+      "command": "echo '{\"latency_ms\": 95}'",
+      "metrics": [
+        {
+          "name": "latency_ms",
+          "extract": "json:.latency_ms",
+          "direction": "lower_is_better",
+          "tolerance": 0.10,
+          "significance": 0.05
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.10,
+  "significance_threshold": 0.05
+}
+EOF
+result=$("$EVALUATE" "$lib_boundary_config" "$lib_boundary_baseline" 2>/dev/null)
+assert_json_field "lower_is_better at boundary verdict is neutral" "$result" '.verdict' 'neutral'
+assert_json_field "latency_ms not in improved at boundary" "$result" '.improved | length' '0'
+assert_json_field "no regressions at boundary" "$result" '.regressed | length' '0'
+rm -f "$lib_boundary_config" "$lib_boundary_baseline"
+
+# Test: lower_is_better improvement with higher_is_better unchanged → keep
+# score (higher_is_better): baseline=42, candidate=42 → neutral (0% change)
+# latency_ms (lower_is_better): baseline=200, candidate=150 → normalized +25% > significance=0.02 → improved
+# No regressions + latency_ms improved → keep
+echo "--- Test: lower_is_better improves, higher_is_better unchanged → keep ---"
+lib_mixed_baseline=$(mktemp)
+echo '{"metrics":{"score":42,"latency_ms":200},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$lib_mixed_baseline"
+lib_mixed_config=$(mktemp)
+cat > "$lib_mixed_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "lib-mixed-bench",
+      "command": "echo '{\"score\": 42, \"latency_ms\": 150}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        },
+        {
+          "name": "latency_ms",
+          "extract": "json:.latency_ms",
+          "direction": "lower_is_better",
+          "tolerance": 0.05,
+          "significance": 0.02
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$lib_mixed_config" "$lib_mixed_baseline" 2>/dev/null)
+assert_json_field "mixed types with lower_is_better improvement verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "latency_ms in improved for mixed test" "$result" '.improved | contains(["latency_ms"])' 'true'
+assert_json_field "score not in improved (unchanged)" "$result" '.improved | contains(["score"])' 'false'
+assert_json_field "no regressions in mixed lower_is_better test" "$result" '.regressed | length' '0'
+rm -f "$lib_mixed_config" "$lib_mixed_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
