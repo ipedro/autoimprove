@@ -288,5 +288,188 @@ else
 fi
 
 echo ""
+echo "=== Tolerance & Significance Boundary Tests ==="
+
+# Test: improvement exactly at significance threshold → neutral (> not >=)
+echo "--- Test: improvement at significance boundary is neutral ---"
+# score: baseline=100, candidate=101 → delta=0.01 = significance=0.01 → not > 0.01 → neutral
+sig_boundary_config=$(mktemp)
+cat > "$sig_boundary_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "sig-bench",
+      "command": "echo '{\"val\": 101}'",
+      "metrics": [
+        {
+          "name": "val",
+          "extract": "json:.val",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+sig_boundary_baseline=$(mktemp)
+echo '{"metrics":{"val":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$sig_boundary_baseline"
+result=$("$EVALUATE" "$sig_boundary_config" "$sig_boundary_baseline" 2>/dev/null)
+assert_json_field "sig boundary: verdict is neutral" "$result" '.verdict' 'neutral'
+assert_json_field "sig boundary: val not in improved" "$result" '.improved | length' '0'
+assert_json_field "sig boundary: val not in regressed" "$result" '.regressed | length' '0'
+assert_json_field "sig boundary: verdict_logic is no_improvements" "$result" '.verdict_logic' 'no_improvements'
+rm -f "$sig_boundary_config" "$sig_boundary_baseline"
+
+# Test: lower_is_better improvement — score decreased = good
+echo "--- Test: lower_is_better improvement (value decreased is good) ---"
+# speed_ms baseline=200, candidate=150 → delta=(150-200)/200=-0.25, normalized=+0.25 > significance → improved
+lib_improve_config=$(mktemp)
+cat > "$lib_improve_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "latency-bench",
+      "command": "echo '{\"latency\": 150}'",
+      "metrics": [
+        {
+          "name": "latency",
+          "extract": "json:.latency",
+          "direction": "lower_is_better",
+          "tolerance": 0.05,
+          "significance": 0.02
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.05,
+  "significance_threshold": 0.02
+}
+EOF
+lib_improve_baseline=$(mktemp)
+echo '{"metrics":{"latency":200},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$lib_improve_baseline"
+result=$("$EVALUATE" "$lib_improve_config" "$lib_improve_baseline" 2>/dev/null)
+assert_json_field "lib improve: verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "lib improve: latency in improved" "$result" '.improved | contains(["latency"])' 'true'
+assert_json_field "lib improve: regressed is empty" "$result" '.regressed | length' '0'
+rm -f "$lib_improve_config" "$lib_improve_baseline"
+
+# Test: config with no gates (empty gates array) — benchmarks still score correctly
+echo "--- Test: config with no gates scores benchmarks normally ---"
+no_gates_config=$(mktemp)
+cat > "$no_gates_config" <<EOF
+{
+  "gates": [],
+  "benchmarks": [
+    {
+      "name": "no-gate-bench",
+      "command": "echo '{\"count\": 55}'",
+      "metrics": [
+        {
+          "name": "count",
+          "extract": "json:.count",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+no_gates_baseline=$(mktemp)
+echo '{"metrics":{"count":50},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$no_gates_baseline"
+result=$("$EVALUATE" "$no_gates_config" "$no_gates_baseline" 2>/dev/null)
+assert_json_field "no-gates: verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "no-gates: count in improved" "$result" '.improved | contains(["count"])' 'true'
+assert_json_field "no-gates: gates array is empty" "$result" '.gates | length' '0'
+rm -f "$no_gates_config" "$no_gates_baseline"
+
+# Test: all metrics within tolerance → verdict neutral, verdict_logic no_improvements
+echo "--- Test: all metrics neutral (within tolerance and significance) ---"
+all_neutral_config=$(mktemp)
+cat > "$all_neutral_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "stable-bench",
+      "command": "echo '{\"a\": 100, \"b\": 200}'",
+      "metrics": [
+        {
+          "name": "a",
+          "extract": "json:.a",
+          "direction": "higher_is_better",
+          "tolerance": 0.05,
+          "significance": 0.03
+        },
+        {
+          "name": "b",
+          "extract": "json:.b",
+          "direction": "lower_is_better",
+          "tolerance": 0.05,
+          "significance": 0.03
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.05,
+  "significance_threshold": 0.03
+}
+EOF
+all_neutral_baseline=$(mktemp)
+# a: baseline=100, candidate=100 → 0 change → neutral
+# b: baseline=200, candidate=200 → 0 change → neutral
+echo '{"metrics":{"a":100,"b":200},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$all_neutral_baseline"
+result=$("$EVALUATE" "$all_neutral_config" "$all_neutral_baseline" 2>/dev/null)
+assert_json_field "all-neutral: verdict is neutral" "$result" '.verdict' 'neutral'
+assert_json_field "all-neutral: improved is empty" "$result" '.improved | length' '0'
+assert_json_field "all-neutral: regressed is empty" "$result" '.regressed | length' '0'
+assert_json_field "all-neutral: verdict_logic is no_improvements" "$result" '.verdict_logic' 'no_improvements'
+rm -f "$all_neutral_config" "$all_neutral_baseline"
+
+# Test: tolerance boundary — delta exactly equals -tolerance → not regressed (strict <)
+echo "--- Test: regression at tolerance boundary is neutral (not regressed) ---"
+# val: baseline=~42.857, candidate=42 → delta = (42-42.857)/42.857 = -0.02 = -tolerance
+# Check: -0.02 < -0.02 is false → not regressed; 0 > significance(0.01) is false → not improved → neutral
+tol_boundary_config=$(mktemp)
+cat > "$tol_boundary_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "tol-bench",
+      "command": "echo '{\"val\": 42}'",
+      "metrics": [
+        {
+          "name": "val",
+          "extract": "json:.val",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+# baseline chosen so delta = exactly -0.02: baseline = 42 / 0.98 = 42.857142...
+tol_boundary_baseline=$(mktemp)
+echo '{"metrics":{"val":42.857142857142},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$tol_boundary_baseline"
+result=$("$EVALUATE" "$tol_boundary_config" "$tol_boundary_baseline" 2>/dev/null)
+assert_json_field "tol boundary: verdict is neutral (not regressed)" "$result" '.verdict' 'neutral'
+assert_json_field "tol boundary: val not in regressed" "$result" '.regressed | length' '0'
+rm -f "$tol_boundary_config" "$tol_boundary_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
