@@ -79,6 +79,19 @@ themes:
       agent_prompts: 2        # improve agent instructions for better accuracy
       command_docs: 1         # improve command descriptions and argument hints
       refactoring: 1
+    focus_paths:
+      test_coverage:
+        - "test/**"
+        - "scripts/*.sh"
+      skill_quality:
+        - "skills/*/SKILL.md"
+      agent_prompts:
+        - "agents/*.md"
+      command_docs:
+        - "commands/*.md"
+      refactoring:
+        - "scripts/**"
+        - "skills/run/references/*.md"
 
 constraints:
   forbidden_paths:
