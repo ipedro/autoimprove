@@ -384,6 +384,12 @@ Also persist the self-assessment in `$RUN_DIR/meta.json` under a `self_assessmen
 
 # 5. Notes
 
+## Background execution reliability
+- When spawning AR as a background agent, use a SINGLE Agent() call with the Skill invocation in the prompt
+- Do NOT nest background agents inside background agents (causes silent failures)
+- If AR background agent goes idle without results after 2 idle cycles: re-dispatch inline (foreground)
+- Pattern: `Agent(run_in_background: true, prompt: "Invoke Skill('autoimprove:adversarial-review', args: '...')")`
+
 - Each agent is spawned with `model: sonnet` for cost efficiency.
 - The review skill NEVER influences keep/discard decisions in the autoimprove loop. It is advisory only.
 - Total token budget: the orchestrator should track approximate token usage. If approaching session limits, warn the user.
