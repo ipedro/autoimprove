@@ -2643,5 +2643,173 @@ assert_json_field "zero-delta: candidate value stored correctly" "$result" '.met
 rm -f "$zero_delta_config" "$zero_delta_baseline"
 
 echo ""
+echo "=== Multi-Bench Cross-Benchmark Regression Tests ==="
+
+# Test: first benchmark improves a metric, second benchmark regresses a different metric → overall regress
+# bench-improve: metric_p baseline=100, candidate=130 (+30%, improved)
+# bench-regress: metric_q baseline=100, candidate=60 (-40%, regressed)
+# regressed_count > 0 → verdict is regress, despite the improvement
+echo "--- Test: first bench improves, second bench regresses → overall regress verdict ---"
+cross_bench_improve_regress_config=$(mktemp)
+cat > "$cross_bench_improve_regress_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "bench-improve",
+      "command": "echo '{\"metric_p\": 130}'",
+      "metrics": [
+        {
+          "name": "metric_p",
+          "extract": "json:.metric_p",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    },
+    {
+      "name": "bench-regress",
+      "command": "echo '{\"metric_q\": 60}'",
+      "metrics": [
+        {
+          "name": "metric_q",
+          "extract": "json:.metric_q",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+cross_bench_baseline=$(mktemp)
+echo '{"metrics":{"metric_p":100,"metric_q":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$cross_bench_baseline"
+result=$("$EVALUATE" "$cross_bench_improve_regress_config" "$cross_bench_baseline" 2>/dev/null)
+assert_json_field "cross-bench: verdict is regress (regression overrides improvement)" "$result" '.verdict' 'regress'
+assert_json_field "cross-bench: metric_q in regressed (from second bench)" "$result" '.regressed | contains(["metric_q"])' 'true'
+assert_json_field "cross-bench: metric_p in improved (from first bench)" "$result" '.improved | contains(["metric_p"])' 'true'
+assert_json_field "cross-bench: verdict_logic is regression_detected" "$result" '.verdict_logic' 'regression_detected'
+rm -f "$cross_bench_improve_regress_config" "$cross_bench_baseline"
+
+# Test: exact delta_pct value for a known regression
+# score: baseline=100, candidate=80 → delta=(80-100)/100 = -0.20 → delta_pct = -20.0
+echo "--- Test: delta_pct exact value for a known regression (100→80 = -20.0%) ---"
+delta_regress_config=$(mktemp)
+cat > "$delta_regress_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "delta-regress-bench",
+      "command": "echo '{\"score\": 80}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+delta_regress_baseline=$(mktemp)
+echo '{"metrics":{"score":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$delta_regress_baseline"
+result=$("$EVALUATE" "$delta_regress_config" "$delta_regress_baseline" 2>/dev/null)
+assert_json_field "delta-regress: verdict is regress" "$result" '.verdict' 'regress'
+delta_val=$(echo "$result" | jq '.metrics.score.delta_pct')
+is_neg=$(echo "$delta_val < 0" | bc -l)
+assert_eq "delta-regress: delta_pct is negative (-20%)" "1" "$is_neg"
+expected_check=$(echo "$delta_val == -20" | bc -l)
+assert_eq "delta-regress: delta_pct is exactly -20.0" "1" "$expected_check"
+rm -f "$delta_regress_config" "$delta_regress_baseline"
+
+# Test: regress reason string starts with the expected prefix "metric(s) regressed: "
+echo "--- Test: regress reason starts with 'metric(s) regressed: ' prefix ---"
+regress_prefix_config=$(mktemp)
+cat > "$regress_prefix_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "prefix-bench",
+      "command": "echo '{\"val\": 50}'",
+      "metrics": [
+        {
+          "name": "val",
+          "extract": "json:.val",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+regress_prefix_baseline=$(mktemp)
+echo '{"metrics":{"val":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$regress_prefix_baseline"
+result=$("$EVALUATE" "$regress_prefix_config" "$regress_prefix_baseline" 2>/dev/null)
+assert_json_field "regress-prefix: verdict is regress" "$result" '.verdict' 'regress'
+regress_reason=$(echo "$result" | jq -r '.reason')
+if echo "$regress_reason" | grep -q "^metric(s) regressed: "; then
+  echo "  PASS: regress reason has correct prefix (got: $regress_reason)"
+  ((PASS++)) || true
+else
+  echo "  FAIL: regress reason should start with 'metric(s) regressed: ' (got: $regress_reason)"
+  ((FAIL++)) || true
+fi
+rm -f "$regress_prefix_config" "$regress_prefix_baseline"
+
+# Test: keep reason string starts with the expected prefix "improvement in: "
+echo "--- Test: keep reason starts with 'improvement in: ' prefix ---"
+keep_prefix_config=$(mktemp)
+cat > "$keep_prefix_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "keep-prefix-bench",
+      "command": "echo '{\"val\": 120}'",
+      "metrics": [
+        {
+          "name": "val",
+          "extract": "json:.val",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+keep_prefix_baseline=$(mktemp)
+echo '{"metrics":{"val":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$keep_prefix_baseline"
+result=$("$EVALUATE" "$keep_prefix_config" "$keep_prefix_baseline" 2>/dev/null)
+assert_json_field "keep-prefix: verdict is keep" "$result" '.verdict' 'keep'
+keep_reason=$(echo "$result" | jq -r '.reason')
+if echo "$keep_reason" | grep -q "^improvement in: "; then
+  echo "  PASS: keep reason has correct prefix (got: $keep_reason)"
+  ((PASS++)) || true
+else
+  echo "  FAIL: keep reason should start with 'improvement in: ' (got: $keep_reason)"
+  ((FAIL++)) || true
+fi
+rm -f "$keep_prefix_config" "$keep_prefix_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
