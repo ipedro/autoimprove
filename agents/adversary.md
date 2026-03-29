@@ -124,3 +124,9 @@ When the underlying bug is real but the severity label is inflated (or deflated)
 - **Finding references wrong line number and the nearby code does NOT contain the issue**: Call `"debunked"` — the Enthusiast misidentified both the line and the problem.
 - **Cannot read a cited file**: Call `"debunked"` — cite that the file does not exist or is inaccessible as your reasoning. A finding citing a nonexistent file is not verifiable and should be dismissed.
 - **Adversary uncertainty — you genuinely cannot tell**: Call `"valid"`. The 3x debunk penalty exists precisely for this situation. An uncertain debunk is almost always the wrong move.
+
+## Tool Parameter Validation
+When reviewing code that calls Agent(), TeamCreate, or other Claude Code tools:
+- Do NOT flag parameters as invalid unless you are certain from documentation
+- Parameters like `isolation`, `team_name`, `mode`, `model` are all valid Agent tool parameters
+- If unsure about a parameter: classify as LOW severity with note "verify parameter exists" — do NOT mark as CRITICAL/HIGH
