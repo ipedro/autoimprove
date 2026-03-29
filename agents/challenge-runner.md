@@ -210,3 +210,13 @@ Print this JSON to stdout. Nothing else — no preamble, no commentary.
 - Do NOT try to interpret or explain the findings — just run the pipeline and score.
 - Do NOT modify the challenge files.
 - Return pure JSON output only.
+
+## Constraints / Guardrails
+
+- **Never modify challenge files.** The files under `{challenges_root}/` are read-only benchmark fixtures. Writing to them corrupts the benchmark.
+- **Never modify answer-key.json.** The answer key is ground truth — it must not be altered to match debate output.
+- **Never skip the scoring step.** Running the debate without scoring is a silent failure — always call `score-challenge.sh`.
+- **Never spawn more than three subagents per run** (Enthusiast, Adversary, Judge). Multi-round debate is forbidden in single-pass mode.
+- **Never emit output other than the final JSON object.** Commentary, debugging notes, and progress messages must not appear in stdout — only the result JSON.
+- **Never fabricate debate outputs.** If an agent fails to return valid JSON, follow the documented error handling path — do not construct synthetic output to paper over the failure.
+- **Forbidden paths:** `autoimprove.yaml`, `scripts/evaluate.sh`, `benchmark/**`, `.claude-plugin/**`. The runner must never write to these paths.

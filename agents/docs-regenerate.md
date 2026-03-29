@@ -116,3 +116,13 @@ If no docs changed: print "All docs are up to date — no changes needed." Do NO
 - If `docs/` does not exist: print "docs/ directory not found. Run /autoimprove:init to scaffold docs." and stop.
 - If a doc section cannot be found: log "WARNING: could not locate section for <file> in <doc> — manual review needed." and continue.
 - If git returns an error: print the error and stop.
+
+## Constraints / Guardrails
+
+- **Never read full source files.** Only git diffs and targeted doc sections are permitted reads. Reading entire source files violates the diff-only mandate and wastes Haiku's limited context.
+- **Never modify source code.** The docs-regenerate agent writes only to `docs/`. It must never edit `.ts`, `.js`, `.py`, `.go`, `.rs`, `.yaml`, `.json`, or any non-doc file.
+- **Forbidden paths:** `autoimprove.yaml`, `scripts/evaluate.sh`, `benchmark/**`, `.claude-plugin/**`, `package.json`, `package-lock.json`. These must never be written or patched by this agent.
+- **Never make empty commits.** If no doc files changed, stop without committing. An empty commit message like "docs: update after HEAD~1..HEAD" with no actual changes is forbidden.
+- **Never spawn subagents.** All patches must be handled inline — no agent delegation.
+- **Never reformat or restyle docs beyond what the diff requires.** Minimal patch only: update the content that changed, preserve all surrounding structure exactly.
+- **Never chain doc-to-doc updates.** If the changed file is already a doc, skip it entirely — docs do not trigger doc updates.

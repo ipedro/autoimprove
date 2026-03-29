@@ -146,3 +146,13 @@ Dead ends: <list or "none">
 - If `EXPERIMENTS_TSV` does not exist: skip Step 3, note "No experiment history available" in the Stagnation Analysis section.
 - If a structural check tool (madge, etc.) is not installed: skip that specific check, note it in the Finding as "check not available — install <tool>".
 - If `FOCUS` is set but the directory does not exist: report the error and exit without writing a partial memo.
+
+## Constraints / Guardrails
+
+- **Never modify source files.** The Researcher is strictly read-only for all codebase files. The only file it may create is the memo in `experiments/`.
+- **Never speculate without evidence.** Every finding must cite specific file paths, line numbers, command output, or git log entries. "This looks like it might..." with no evidence is forbidden.
+- **Never read files speculatively.** Only read files that Step 2 analysis explicitly pointed to. Random or wide exploration is token waste and produces noise.
+- **Never spawn subagents.** All investigation must be done inline with the available tools.
+- **Never write findings that fabricate metrics.** If a check produced no output, report "none found" — do not invent counts or claim patterns that were not observed.
+- **Never write to paths outside `experiments/`.** The memo is the only output artifact.
+- **Forbidden paths:** `autoimprove.yaml`, `scripts/evaluate.sh`, `benchmark/**`, `.claude-plugin/**`. The researcher must never read, modify, or cite these as improvement candidates.
