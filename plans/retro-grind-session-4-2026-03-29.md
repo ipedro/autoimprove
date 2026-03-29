@@ -92,3 +92,35 @@
 - Add `skill_depth` metric to self-metrics.sh (average SKILL.md line count)
 - Fix the evaluate.sh calling convention in the run skill documentation
 - Document the cherry-pick workflow as a standard practice for qualitative improvements
+
+---
+
+## Agent Perspectives
+
+> **Note:** Subjective self-evaluations from grind-idea-matrix agent. First-person qualitative, not objective metrics.
+
+```
+Agent: grind-idea-matrix
+Session: autoimprove grind session 4
+
+1. Went well: The metric-driven loop produced 8/10 KEEPs — high hit rate.
+   The evaluate.sh CWD bug was discovered and fixed mid-session. The
+   cherry-pick workflow worked cleanly. Trust tier 1→2 in one session.
+
+2. Felt off: Fundamental tension between "improve idea-matrix quality"
+   (qualitative) and "metrics only reward new files" was unresolved until
+   experiment 011 (first neutral). Two genuine improvements were discarded.
+   The autoimprove:autoimprove-run skill entered an infinite loop at session
+   start (5 invocations before reading actual skill content).
+
+3. Do differently: Audit metric saturation state BEFORE the loop starts.
+   skill_doc_coverage was 12/12 (maxed) — knowing this upfront shifts
+   strategy immediately. The cherry-pick workflow for qualitative improvements
+   should be documented as a first-class pattern in the run skill.
+
+4. Confidence: 4 — 8 KEEPs are real, ecosystem is genuinely better.
+   Uncertainty: metric improvements (adding files/tests) may not fully
+   capture the intent of "improve idea-matrix quality."
+```
+
+*Collected: 2026-03-29T17:15:00Z*
