@@ -669,5 +669,111 @@ assert_json_field "second gate name correct" "$result" '.gates[1].name' 'second-
 rm -f "$second_gate_detail_config"
 
 echo ""
+echo "=== Zero Baseline Edge Case Tests ==="
+
+# Test: zero baseline, non-zero candidate — delta_pct hardcoded to 1 (100% gain)
+# evaluate.sh special-cases baseline=0, candidate!=0 → delta_pct=1
+# normalized_delta=1 > significance=0.01 → improved → keep
+echo "--- Test: zero baseline, non-zero candidate → keep (100% improvement) ---"
+zero_base_nonzero_cand_baseline=$(mktemp)
+echo '{"metrics":{"score":0},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$zero_base_nonzero_cand_baseline"
+zero_base_nonzero_cand_config=$(mktemp)
+cat > "$zero_base_nonzero_cand_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "zero-base-bench",
+      "command": "echo '{\"score\": 1}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$zero_base_nonzero_cand_config" "$zero_base_nonzero_cand_baseline" 2>/dev/null)
+assert_json_field "zero-baseline non-zero candidate verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "score in improved when baseline=0" "$result" '.improved | contains(["score"])' 'true'
+assert_json_field "no regressions when baseline=0 candidate>0" "$result" '.regressed | length' '0'
+rm -f "$zero_base_nonzero_cand_config" "$zero_base_nonzero_cand_baseline"
+
+# Test: zero baseline, zero candidate — delta_pct hardcoded to 0 → normalized=0
+# 0 > significance=0.01 is FALSE; 0 < -tolerance=0.02 is FALSE → neutral
+echo "--- Test: zero baseline, zero candidate → neutral (no change) ---"
+zero_zero_baseline=$(mktemp)
+echo '{"metrics":{"score":0},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$zero_zero_baseline"
+zero_zero_config=$(mktemp)
+cat > "$zero_zero_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "zero-zero-bench",
+      "command": "echo '{\"score\": 0}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$zero_zero_config" "$zero_zero_baseline" 2>/dev/null)
+assert_json_field "zero-baseline zero-candidate verdict is neutral" "$result" '.verdict' 'neutral'
+assert_json_field "score not in improved when both zero" "$result" '.improved | length' '0'
+assert_json_field "score not in regressed when both zero" "$result" '.regressed | length' '0'
+rm -f "$zero_zero_config" "$zero_zero_baseline"
+
+# Test: significance threshold of 0.0 — any positive delta, however small, should produce keep
+# score: baseline=100, candidate=100.001 → delta=0.00001% > significance=0.0 → improved → keep
+echo "--- Test: significance=0.0 — any improvement produces keep ---"
+sig_zero_baseline=$(mktemp)
+echo '{"metrics":{"score":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$sig_zero_baseline"
+sig_zero_config=$(mktemp)
+cat > "$sig_zero_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "sig-zero-bench",
+      "command": "echo '{\"score\": 101}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.0
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.0
+}
+EOF
+result=$("$EVALUATE" "$sig_zero_config" "$sig_zero_baseline" 2>/dev/null)
+assert_json_field "significance=0.0 any improvement → keep" "$result" '.verdict' 'keep'
+assert_json_field "score in improved with significance=0.0" "$result" '.improved | contains(["score"])' 'true'
+assert_json_field "no regressions with significance=0.0" "$result" '.regressed | length' '0'
+rm -f "$sig_zero_config" "$sig_zero_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
