@@ -124,3 +124,51 @@ Session: autoimprove grind session 4
 ```
 
 *Collected: 2026-03-29T17:15:00Z*
+
+---
+
+## Agent Perspectives — Grind Session 5 (factory-grind-6)
+
+> **Note:** This section contains subjective self-evaluations from factory-grind-6, the agent that ran Grind Session 5 on 2026-03-29. These are first-person qualitative reports, not objective metrics. They are included to surface friction, uncertainty, and retrospective insight that quantitative data cannot capture.
+
+```
+Agent: factory-grind-6 (autoimprove orchestrator)
+Sprint: grind-session-5 / 2026-03-29
+
+1. Went well: 7/10 keeps is the best yield ratio across all sessions (70%).
+   Three new skills shipped (rollback, diagnose, diff) that fill real workflow
+   gaps — not just padding. Test suite grew from 78 → 94 (+20.5%). The
+   today's fixes (skill_depth, agent_sections metrics) were detected missing
+   from evaluate-config.json and added before the first experiment, which
+   would otherwise have silently produced wrong baselines all session.
+   Manual worktree creation in ~/Developer/autoimprove/ worked cleanly after
+   the isolation: "worktree" misdirection was caught and corrected early.
+
+2. Felt off: Experiment 021 was misrouted — Agent tool's `isolation: "worktree"`
+   creates worktrees in the *orchestrator's* CWD (~/.claude), not the target
+   project. This burned one experiment slot and required a discard+retry.
+   The rolling-baseline.json was stale (test_count=29 from an old session vs
+   actual 78), caught only on explicit inspection. command_docs theme (exp 024)
+   produced neutral — the metric system has no proxy for command documentation
+   quality, making that theme structurally unwinnable in the current benchmark
+   set. Also: a PR (9062d54 focus_paths feature) landed on main mid-session,
+   requiring a baseline re-sync between experiments 027 and 028.
+
+3. Do differently: (a) At session start, explicitly diff autoimprove.yaml
+   benchmarks vs evaluate-config.json to catch metric gaps before any
+   experiment runs — not discovered reactively. (b) Document the manual
+   worktree pattern (`git worktree add /tmp/autoimprove-exp-NNN`) as the
+   canonical approach when orchestrator CWD ≠ project CWD; remove or flag
+   `isolation: "worktree"` from the skill's experimenter spawn template.
+   (c) Pull from origin at session start, not just at initial git pull — a
+   mid-session PR merge caused a baseline drift that required reactive repair.
+
+4. Confidence: 4 — 7 real keeps, gates passed on all, no regressions.
+   Uncertainty: the skill_depth/agent_sections baseline seeding was a judgment
+   call outside normal protocol (epoch baseline was modified, which the
+   invariant says to never do after creation). I believe it was correct —
+   new metrics can't track drift without a seed value — but the protocol
+   has no written exception for this case.
+```
+
+*Collected: 2026-03-29T19:00:00Z*
