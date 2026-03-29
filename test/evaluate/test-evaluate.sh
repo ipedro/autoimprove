@@ -2544,5 +2544,104 @@ assert_json_field "dup-metric: candidate value reflects second benchmark (120)" 
 rm -f "$dup_metric_config" "$dup_metric_baseline"
 
 echo ""
+echo "=== Gate Fail Output Structure Tests ==="
+
+# Test: gate_fail output has metrics={}, improved=[], regressed=[]
+# evaluate.sh hardcodes these in the gate_fail JSON — verify the structure is correct.
+echo "--- Test: gate_fail output has empty metrics, improved, and regressed ---"
+gf_struct_config=$(mktemp)
+echo '{"gates":[{"name":"structural-fail","command":"false"}],"benchmarks":[],"regression_tolerance":0.02,"significance_threshold":0.01}' > "$gf_struct_config"
+result=$("$EVALUATE" "$gf_struct_config" /dev/null 2>/dev/null)
+assert_json_field "gf-struct: metrics is empty object" "$result" '.metrics | length' '0'
+assert_json_field "gf-struct: improved is empty array" "$result" '.improved | length' '0'
+assert_json_field "gf-struct: regressed is empty array" "$result" '.regressed | length' '0'
+assert_json_field "gf-struct: verdict is gate_fail" "$result" '.verdict' 'gate_fail'
+rm -f "$gf_struct_config"
+
+# Test: gate_fail reason string contains the failed gate name
+# evaluate.sh sets reason="gate '$failed_gate' failed" — verify the name appears verbatim.
+echo "--- Test: gate_fail reason string contains the failed gate name ---"
+gf_reason_config=$(mktemp)
+echo '{"gates":[{"name":"my-named-gate","command":"false"}],"benchmarks":[],"regression_tolerance":0.02,"significance_threshold":0.01}' > "$gf_reason_config"
+result=$("$EVALUATE" "$gf_reason_config" /dev/null 2>/dev/null)
+gf_reason=$(echo "$result" | jq -r '.reason')
+if echo "$gf_reason" | grep -q "my-named-gate"; then
+  echo "  PASS: gate_fail reason contains gate name (got: $gf_reason)"
+  ((PASS++)) || true
+else
+  echo "  FAIL: gate_fail reason should contain gate name 'my-named-gate' (got: $gf_reason)"
+  ((FAIL++)) || true
+fi
+rm -f "$gf_reason_config"
+
+# Test: neutral reason string is exactly "no metrics improved beyond significance threshold"
+# evaluate.sh hardcodes this exact string — verify it hasn't drifted.
+echo "--- Test: neutral verdict reason is exact string 'no metrics improved beyond significance threshold' ---"
+neutral_reason_config=$(mktemp)
+cat > "$neutral_reason_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "stable-bench",
+      "command": "echo '{\"val\": 100}'",
+      "metrics": [
+        {
+          "name": "val",
+          "extract": "json:.val",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+neutral_reason_baseline=$(mktemp)
+echo '{"metrics":{"val":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$neutral_reason_baseline"
+result=$("$EVALUATE" "$neutral_reason_config" "$neutral_reason_baseline" 2>/dev/null)
+assert_json_field "neutral-reason: verdict is neutral" "$result" '.verdict' 'neutral'
+assert_json_field "neutral-reason: reason is exact text" "$result" '.reason' 'no metrics improved beyond significance threshold'
+rm -f "$neutral_reason_config" "$neutral_reason_baseline"
+
+# Test: delta_pct is exactly 0 when baseline equals candidate
+# When baseline==candidate, delta=(c-b)/b=0, so delta_pct=0*100=0.
+echo "--- Test: delta_pct is exactly 0 when baseline equals candidate ---"
+zero_delta_config=$(mktemp)
+cat > "$zero_delta_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "zero-delta-bench",
+      "command": "echo '{\"score\": 42}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+zero_delta_baseline=$(mktemp)
+echo '{"metrics":{"score":42},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$zero_delta_baseline"
+result=$("$EVALUATE" "$zero_delta_config" "$zero_delta_baseline" 2>/dev/null)
+assert_json_field "zero-delta: verdict is neutral" "$result" '.verdict' 'neutral'
+assert_json_field "zero-delta: delta_pct is 0" "$result" '.metrics.score.delta_pct' '0'
+assert_json_field "zero-delta: baseline value stored correctly" "$result" '.metrics.score.baseline' '42'
+assert_json_field "zero-delta: candidate value stored correctly" "$result" '.metrics.score.candidate' '42'
+rm -f "$zero_delta_config" "$zero_delta_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
