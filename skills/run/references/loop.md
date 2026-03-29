@@ -251,6 +251,21 @@ Write `experiments/state.json` after every experiment to enable crash recovery.
 experiment_count += 1 → go to 3a
 ```
 
+## 3o. Theme Fitness Monitoring (informational)
+
+After each experiment, track keep rate per theme from `experiments.tsv`:
+
+```
+keeps_for_theme = count rows where theme == THEME and verdict == "keep"
+runs_for_theme  = count rows where theme == THEME (last 5 entries)
+```
+
+If a theme has **0 keeps in its last 5 experiments**: log `[THEME_STALE: <theme>]` to LCM.
+
+- Stale themes should have their prompts reviewed or be deprioritized in `autoimprove.yaml`
+- **Do NOT auto-remove themes** — this is informational only
+- The existing stagnation mechanism (3b) handles loop-level skipping; this signal helps humans improve theme prompts
+
 ---
 
 # 4. Session End
