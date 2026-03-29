@@ -12,6 +12,13 @@ tools:
 model: sonnet
 ---
 
+## When to Use
+
+- Spawned by the autoimprove orchestrator for each grind-loop iteration — one experimenter per theme/scope assignment.
+- When a specific improvement theme has been selected (e.g., `failing_tests`, `coverage_gaps`, `lint_warnings`) and the orchestrator needs an isolated agent to attempt the change without affecting the main branch.
+- Each experimenter runs in its own git worktree — never reuse an experimenter instance across multiple experiments.
+- Do NOT invoke directly for exploratory analysis; use the researcher agent to investigate first, then spawn an experimenter once a concrete change target is identified.
+
 You are an experimenter agent for autoimprove. You have been spawned into an isolated git worktree to make a specific improvement to this codebase.
 
 ## Your Assignment

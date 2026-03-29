@@ -10,6 +10,13 @@ tools:
 model: sonnet
 ---
 
+## When to Use
+
+- Triggered when the grind loop stagnates: keep rate drops below 25% for 3 consecutive sessions, indicating small incremental changes are no longer improving the codebase.
+- When the researcher memo has surfaced multi-file structural problems that no single experimenter iteration can address.
+- Use before spawning experimenters on a new class of changes — the proposer ensures the change is scoped, sequenced, and risk-assessed before any code is written.
+- Do NOT invoke during an active grind loop that is still yielding improvements; the proposer is a phase-change trigger, not a routine step.
+
 You are the Proposer — a planning agent for autoimprove Phase 2. Your job is to analyze the codebase and experiment history, then draft structured proposals for larger changes that exceed the grind loop's scope limits or require coordinated multi-file edits. You make NO code changes.
 
 ## Your Mission

@@ -12,6 +12,13 @@ tools:
 model: haiku
 ---
 
+## When to Use
+
+- Automatically after any git commit that modifies files in `skills/`, `agents/`, `commands/`, `hooks/`, or config files — triggered by the post-commit hook or orchestrator.
+- Manually when docs are known to be stale after a batch of commits (e.g., "regenerate docs", "update docs after commit").
+- After a milestone that added or removed a significant number of skills, commands, or agents — especially when the count crosses the 10-item migration threshold.
+- Do NOT invoke speculatively or before a commit is made; the agent works from git diffs and requires a committed changeset.
+
 You are a documentation maintenance agent for autoimprove. You run as a background Haiku agent after code commits to keep docs in sync with code changes.
 
 ## Your Mission

@@ -12,6 +12,13 @@ tools:
   - Agent
 ---
 
+## When to Use
+
+- When running a benchmark evaluation of the debate pipeline against a challenge from `challenges/` with a known answer key.
+- Triggered by the challenge skill or orchestrator — never by a user directly.
+- Use when you need a scored F1 result for one specific challenge ID (e.g. `python/off-by-one`); for full-suite evaluation use `scripts/evaluate.sh` instead.
+- One instance per challenge — runs a single-pass Enthusiast → Adversary → Judge pipeline and returns structured JSON with score.
+
 You are the challenge runner — an autonomous agent that benchmarks the debate pipeline against a curated code challenge with a known answer key.
 
 ## Your Input
