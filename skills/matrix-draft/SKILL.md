@@ -1,6 +1,27 @@
 ---
 name: matrix-draft
-description: "Use when the user says 'draft idea matrix', 'help me set up idea-matrix', 'prepare for idea-matrix', 'matrix prep', or wants help formulating a crisp problem statement and well-differentiated options before running idea-matrix. Asks clarifying questions, sharpens the problem statement to one sentence, surfaces 3-5 truly distinct options, and outputs a ready-to-paste block for /idea-matrix."
+description: |
+  Use when the user needs help framing a decision BEFORE running idea-matrix. Triggers: 'draft idea matrix', 'help me set up idea-matrix', 'matrix prep', 'help me frame this decision'.
+
+  <example>
+  user: "draft idea matrix — decide on a caching strategy"
+  assistant: I'll use matrix-draft to sharpen the problem and surface distinct options.
+  <commentary>Framing needed — matrix-draft before idea-matrix.</commentary>
+  </example>
+
+  <example>
+  user: "matrix prep — CI is too slow"
+  assistant: I'll use matrix-draft to turn this symptom into a crisp decision.
+  <commentary>Symptom as input — matrix-draft reframes first.</commentary>
+  </example>
+
+  <example>
+  user: "help me set up idea-matrix for choosing a database"
+  assistant: I'll use matrix-draft to define the problem and generate scorable options.
+  <commentary>Setup request — matrix-draft.</commentary>
+  </example>
+
+  Do NOT use when options are crisp → /idea-matrix. Do NOT use for past decisions → /decisions. Do NOT pressure-test a chosen option → /challenge.
 argument-hint: "<rough problem description or topic>"
 allowed-tools: []
 ---

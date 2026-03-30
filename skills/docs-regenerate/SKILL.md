@@ -1,6 +1,27 @@
 ---
 name: docs-regenerate
-description: "Update docs after code changes using only the git diff. Use when the user says 'regenerate docs', 'update docs', 'docs are stale', 'sync docs', '/docs-regenerate', or after a milestone commit. Detects which source files changed, gets the diff, maps to affected doc sections, and patches only those sections."
+description: |
+  Update docs after code changes using only the git diff. Triggers: 'regenerate docs', 'update docs', 'docs are stale', 'sync docs', '/docs-regenerate', 'docs after milestone'.
+
+  <example>
+  user: "regenerate docs after the last commit"
+  assistant: I'll use docs-regenerate to patch only affected doc sections.
+  <commentary>Post-commit doc patch — docs-regenerate.</commentary>
+  </example>
+
+  <example>
+  user: "docs are stale — we added a new skill"
+  assistant: I'll use docs-regenerate to add the new skill entry from the diff.
+  <commentary>New file in diff — docs-regenerate adds the doc entry.</commentary>
+  </example>
+
+  <example>
+  user: "/docs-regenerate --dry-run"
+  assistant: I'll run docs-regenerate in dry-run mode to preview without writing.
+  <commentary>Preview mode — pass --dry-run.</commentary>
+  </example>
+
+  Do NOT regenerate all docs from scratch (no --all — token trap). Do NOT use without commits (needs a diff). Do NOT use for decisions/ideas (use idea-archive).
 argument-hint: "[--range <git-range>] [--dry-run]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---
