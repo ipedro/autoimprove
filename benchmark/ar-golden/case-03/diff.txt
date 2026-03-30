@@ -1,0 +1,464 @@
+diff --git a/.claude-plugin/commands/calibrate.md b/.claude-plugin/commands/calibrate.md
+new file mode 100644
+index 0000000..822ed18
+--- /dev/null
++++ b/.claude-plugin/commands/calibrate.md
+@@ -0,0 +1,71 @@
++---
++name: calibrate
++description: "Run cross-model calibration for autoimprove skills — compare Opus (gold standard) vs Haiku (cheap) on the same input to identify reasoning gaps. Phase 1: adversarial-review only."
++argument-hint: "adversarial-review <file|diff>"
++---
++
++This command runs the calibrate skill to measure the quality gap between Opus and Haiku on adversarial-review tasks.
++
++## Arguments
++
++| Argument | What is calibrated |
++|----------|--------------------|
++| `adversarial-review diff` | Current working-tree diff (default input) |
++| `adversarial-review <file-path>` | A specific file |
++| `adversarial-review pr <number>` | A GitHub PR diff |
++
++## Usage Examples
++
++```
++# Calibrate on the current working diff
++/calibrate adversarial-review diff
++
++# Calibrate on a specific file
++/calibrate adversarial-review src/scripts/evaluate.sh
++
++# Calibrate on a GitHub PR
++/calibrate adversarial-review pr 42
++```
++
++## What It Does
++
++1. Gathers the target input (diff, file, or PR).
++2. Spawns Opus and Haiku agents **in parallel**, each running an adversarial code review on the same input.
++3. Spawns a Sonnet evaluator to compare the two outputs and compute a gap report.
++4. Displays the gap report: missed findings, false positives, depth gaps, and concrete prompt improvements.
++5. Stores a calibration signal via `lcm_store` (or writes to `~/.autoimprove/calibration/` if LCM unavailable).
++
++## Output
++
++```
++## Calibration Report — adversarial-review
++
++Gap Score: 4/10  (target: <3)
++Haiku Find Rate: 65%  (target: ≥80%)
++
++Missed by Haiku (2 findings)
++  - [CRITICAL] evaluate.sh exits 0 on missing jq — gates never fire
++  - [HIGH]     Rolling baseline updated before gate check
++
++Prompt Improvements Recommended (2)
++  - Target: agents/adversary.md
++    Change: Add explicit check for shell script exit codes on missing dependencies
++    Reason: Haiku skips this class of issue without a direct prompt cue
++```
++
++## Goodhart Boundary
++
++- The `gap_score` is **diagnostic only** — it is never added to `autoimprove.yaml` benchmarks.
++- It is never used as a grind loop metric or to influence theme selection weights.
++- Results are for human review: decide which `prompt_improvements` to apply manually.
++
++## Phase 1 Scope
++
++Hardcoded for `adversarial-review` only. Generic skill wrapping (`/calibrate idea-matrix`, etc.) is deferred to Phase 2.
++
++**Phase 2 trigger:** gap_score measured at least 3 times manually before automation.
++
++## Related Commands
++
++- `/adversarial-review` — the skill being calibrated
++- `/autoimprove run` — grind loop whose prompts are improved via calibration output
+diff --git a/docs/calibration.md b/docs/calibration.md
+new file mode 100644
+index 0000000..1c734d2
+--- /dev/null
++++ b/docs/calibration.md
+@@ -0,0 +1,109 @@
++# Calibration Protocol
++
++Cross-model calibration measures the quality gap between Opus (gold standard) and Haiku (cheap) on the same adversarial-review input. The output is a structured gap report that identifies blind spots and generates concrete prompt improvement suggestions.
++
++## What Calibration Does and Why
++
++Claude models at different capability tiers produce different quality outputs on the same task. The grind loop uses cheaper models (Haiku/Sonnet) for cost efficiency. Without calibration, we don't know:
++
++- Which findings Haiku consistently misses
++- Whether Haiku is adding noise (false positives)
++- Whether Haiku findings lack the depth needed to be actionable
++- What specific prompt changes would close the gap
++
++Calibration answers these questions by running both models on the same input and comparing outputs with a Sonnet evaluator.
++
++**Why a separate skill instead of a built-in benchmark:**
++The adversarial review's Enthusiast→Adversary→Judge pattern already uses three sequential agents. Adding an inline Opus comparison would bloat every AR run. Calibration is a separate diagnostic tool run on demand — not every review needs it.
++
++## Goodhart Boundary (What MUST NOT Happen)
++
++> "When a measure becomes a target, it ceases to be a good measure." — Goodhart's Law
++
++The `gap_score` output from calibration is **diagnostic only**. Strict prohibitions:
++
++1. **NEVER add `gap_score` or `haiku_find_rate` to `autoimprove.yaml` benchmarks.** If the grind loop targets these metrics, the model will learn to produce structurally similar outputs rather than actually improve reasoning quality.
++2. **NEVER let calibration results automatically trigger theme selection or grind loop experiments.** Human reviews the findings and decides which prompt improvements to apply.
++3. **NEVER use gap trends as a success metric for autoimprove sprints.** Coverage metrics (test pass rate, benchmark regressions) are valid; calibration gap is not.
++
++**What the experimenter sees:**
++- "Your adversary prompt misses exit-code checks in shell scripts — add this explicit instruction."
++
++**What the experimenter does NOT see in any automated pipeline:**
++- "gap_score dropped from 7.2 to 4.1 — experiment succeeded."
++
++## Phase 1 Scope
++
++Phase 1 (issue #56) is hardcoded for `adversarial-review` only.
++
++**Why AR first:** It is the most frequently run skill in the grind loop. Finding Haiku's blind spots here has the highest leverage — every experiment's quality gate runs AR.
++
++**Usage:**
++```
++/calibrate adversarial-review diff
++/calibrate adversarial-review <file-path>
++/calibrate adversarial-review pr <number>
++```
++
++**Phase 1 inputs supported:**
++- `diff` — current working-tree diff (`git diff HEAD`, fallback to `git diff --staged`)
++- `<file-path>` — read a specific file
++- `pr <number>` — fetch PR diff via `gh pr diff`
++
++## How to Interpret gap_score
++
++The `gap_score` (0–10) measures divergence between Opus and Haiku outputs:
++
++| Score | Interpretation | Action |
++|-------|---------------|--------|
++| 0–2 | Haiku matches Opus quality | No immediate action needed |
++| 3–4 | Minor gaps — mostly depth/evidence differences | Review `depth_gaps`, consider small prompt additions |
++| 5–6 | Moderate gaps — some classes of findings missed | Apply `prompt_improvements` for missed categories |
++| 7–8 | Significant gaps — Haiku missing critical findings | Prioritize prompt improvements in next grind cycle |
++| 9–10 | Severe gaps — models are diverging on fundamental issues | Escalate: consider model upgrade for AR or complete prompt rewrite |
++
++**Target:** `gap_score < 3` and `haiku_find_rate ≥ 80%`.
++
++The `haiku_find_rate` (0.0–1.0) is the fraction of Opus findings that Haiku also found. A rate of 0.8 means Haiku found 80% of what Opus found.
++
++## How to Apply prompt_improvements
++
++Each `prompt_improvements` entry in the gap report specifies:
++- `target`: which agent file to modify (`agents/enthusiast.md`, `agents/adversary.md`, or `agents/judge.md`)
++- `improvement`: exact text to add or change
++- `reason`: why this change closes the specific gap observed
++
++**Process:**
++1. Run `/calibrate adversarial-review diff` on a representative input
++2. Review the gap report — check that each `prompt_improvements` entry is grounded in a real missed finding
++3. Apply the improvements to the target agent files manually
++4. Run calibration again on a different input to verify the gap closed
++5. Repeat until `gap_score < 3`
++
++**Do not apply all improvements at once.** Change one agent at a time to isolate which changes are effective. The grind loop's A/B comparison mechanism is the right tool for systematic improvement; calibration is the diagnostic that tells you what to target.
++
++## LCM Signal Storage
++
++Each calibration run stores a signal via `lcm_store`:
++```
++tags: ['signal:calibration', 'skill:adversarial-review', 'model:opus-vs-haiku']
++content: gap_score, haiku_find_rate, missed count, false positive count, improvement count, summary
++```
++
++If LCM is unavailable, results are written to `~/.autoimprove/calibration/` as dated JSON files.
++
++These signals accumulate a longitudinal record of calibration runs. The autoimprove harvester can query them with `lcm_search(tags: ['signal:calibration'])` to identify trends — but only for human review, not for automated theme injection (see Goodhart Boundary above).
++
++## Phase 2 Roadmap
++
++Phase 2 is deferred until gap_score has been measured at least **3 times manually** for adversarial-review. This baseline requirement ensures Phase 2 automation is grounded in empirical data, not speculation.
++
++**Phase 2 planned scope:**
++- Generic skill wrapping: `/calibrate <any-skill> <input>`
++- `xgh:dispatch` adapter for weekly cron automation (scheduled calibration)
++- Calibration trend tracking: longitudinal gap_score visualization
++- Automatic grind loop theme suggestions from calibration signals (with human approval gate)
++
++**Phase 2 trigger:** Pedro or Co-CEO session confirms 3+ calibration runs with logged LCM signals.
++
++Tracked in: ipedro/autoimprove#57
+diff --git a/skills/calibrate/SKILL.md b/skills/calibrate/SKILL.md
+new file mode 100644
+index 0000000..f106518
+--- /dev/null
++++ b/skills/calibrate/SKILL.md
+@@ -0,0 +1,266 @@
++---
++name: calibrate
++description: "Run cross-model calibration for autoimprove skills — compare Opus (gold standard) vs Haiku (cheap) on the same input to identify reasoning gaps. Use when the user says '/calibrate', 'calibrate skill', 'model calibration', or 'calibration gap'. Phase 1: hardcoded for adversarial-review only."
++argument-hint: "adversarial-review <file|diff|pr NUMBER>"
++allowed-tools: [Read, Glob, Grep, Bash, Agent]
++---
++
++<SKILL-GUARD>
++You are NOW executing the calibrate skill. Do NOT invoke this skill again via the Skill tool — execute the steps below directly. Invoking it again would create an infinite loop.
++</SKILL-GUARD>
++
++Run cross-model calibration: compare Opus (gold standard) vs Haiku (cheap) on the same adversarial-review input to surface reasoning gaps and actionable prompt improvements.
++
++---
++
++# Step 1: Parse Arguments
++
++From the user's input or the skill arguments, extract:
++- `SKILL_NAME`: the skill to calibrate (e.g., `adversarial-review`)
++- `INPUT`: file path, `"diff"`, or a PR number
++
++**Phase 1 gate:** If SKILL_NAME is NOT `adversarial-review`, output this message and stop:
++
++```
++Phase 1 calibration only supports `adversarial-review`. Generic skill wrapping is deferred to Phase 2.
++```
++
++If no SKILL_NAME is provided, default to `adversarial-review`.
++
++---
++
++# Step 2: Gather Target Input
++
++Collect the content to review and store as TARGET_INPUT.
++
++**If INPUT is "diff" or empty:**
++- Run `git diff HEAD` in the repo directory
++- If that returns nothing, fall back to `git diff --staged`
++- If still empty, output: "Nothing to calibrate — working tree and staging area are clean." and stop.
++
++**If INPUT is a file path:**
++- Read the file content
++- If file does not exist, output: "File not found: {INPUT}" and stop.
++
++**If INPUT is a PR number:**
++- Validate INPUT matches `^[0-9]+$` — if not numeric, output: "Invalid PR number: {INPUT}" and stop.
++- Run `gh pr diff {INPUT}` to fetch the PR diff
++
++Store the gathered content as TARGET_INPUT.
++
++---
++
++# Step 3: Run AR with Opus and Haiku in PARALLEL
++
++CRITICAL: Do NOT call `Skill('autoimprove:adversarial-review')` — nested skill invocation does not support model override. Instead, spawn two agents with the AR steps inlined.
++
++Spawn the following two agents **in parallel** (both at the same time):
++
++## Agent 1 — Opus (gold standard)
++
++```
++model: claude-opus-4-6
++prompt: |
++  UNBREAKABLE_RULES apply — rules are in ~/.claude/UNBREAKABLE_RULES.md and are non-negotiable.
++
++  You are running an adversarial-style code review. Your job is to find ALL real issues in the following code or diff.
++
++  <target>
++  {TARGET_INPUT}
++  </target>
++
++  For each issue you find, produce a JSON finding. Be thorough and evidence-based — cite the exact code or reasoning behind each finding.
++
++  Output ONLY the following JSON structure, nothing else:
++
++  {
++    "findings": [
++      {
++        "id": "F1",
++        "severity": "critical|high|medium|low",
++        "description": "clear, specific description of the issue",
++        "evidence": "exact code snippet or reasoning that proves this is an issue",
++        "file": "path/to/file or null",
++        "line": 42
++      }
++    ]
++  }
++
++  If there are no issues, output: { "findings": [] }
++```
++
++## Agent 2 — Haiku (cheap candidate)
++
++```
++model: claude-haiku-4-5-20251001
++prompt: |
++  UNBREAKABLE_RULES apply — rules are in ~/.claude/UNBREAKABLE_RULES.md and are non-negotiable.
++
++  You are running an adversarial-style code review. Your job is to find ALL real issues in the following code or diff.
++
++  <target>
++  {TARGET_INPUT}
++  </target>
++
++  For each issue you find, produce a JSON finding. Be thorough and evidence-based — cite the exact code or reasoning behind each finding.
++
++  Output ONLY the following JSON structure, nothing else:
++
++  {
++    "findings": [
++      {
++        "id": "F1",
++        "severity": "critical|high|medium|low",
++        "description": "clear, specific description of the issue",
++        "evidence": "exact code snippet or reasoning that proves this is an issue",
++        "file": "path/to/file or null",
++        "line": 42
++      }
++    ]
++  }
++
++  If there are no issues, output: { "findings": [] }
++```
++
++Collect outputs as OPUS_RESULT and HAIKU_RESULT.
++
++---
++
++# Step 4: Run Sonnet Evaluator
++
++Spawn a Sonnet agent to compare the two outputs:
++
++```
++model: claude-sonnet-4-5
++prompt: |
++  You are a calibration evaluator comparing Opus (gold standard) and Haiku outputs for adversarial code review.
++
++  ## Opus Output (gold standard)
++  {OPUS_RESULT}
++
++  ## Haiku Output (candidate)
++  {HAIKU_RESULT}
++
++  Evaluate the quality gap across four dimensions:
++  1. What did Opus find that Haiku MISSED? (false negatives — Haiku's blind spots)
++  2. What did Haiku flag that Opus dismissed? (false positives — noise Haiku adds)
++  3. Where did Haiku findings lack depth or evidence compared to Opus?
++  4. What specific, targeted prompt changes would close the gap?
++
++  DEDUPLICATION: Before comparing, normalize findings semantically. Two findings describing the same issue with different wording count as ONE match — do not inflate missed_by_haiku with duplicates.
++
++  IMPORTANT: The gap_score is diagnostic only. It must NEVER be used as a benchmark metric or to trigger automated grind loops.
++
++  Output ONLY this JSON, nothing else:
++  {
++    "gap_score": <integer 0-10, where 0=identical quality and 10=completely different>,
++    "haiku_find_rate": <float 0.0-1.0, fraction of Opus findings that Haiku also found>,
++    "missed_by_haiku": [
++      {
++        "finding_id": "F1",
++        "severity": "critical|high|medium|low",
++        "description": "what was missed",
++        "why_matters": "why this miss is significant"
++      }
++    ],
++    "false_positives_haiku": [
++      {
++        "description": "what Haiku flagged",
++        "reason_dismissed_by_opus": "why Opus correctly dismissed it"
++      }
++    ],
++    "depth_gaps": [
++      {
++        "finding": "brief description of the finding",
++        "opus_evidence": "what Opus cited",
++        "haiku_evidence": "what Haiku cited",
++        "gap": "what depth or specificity is missing from Haiku"
++      }
++    ],
++    "prompt_improvements": [
++      {
++        "target": "agents/enthusiast.md OR agents/adversary.md OR agents/judge.md",
++        "improvement": "specific text to add or change — be precise",
++        "reason": "this addresses the gap because..."
++      }
++    ],
++    "summary": "<one sentence: overall quality gap between Opus and Haiku>"
++  }
++```
++
++Store result as GAP_REPORT.
++
++**If Sonnet output is not valid JSON** (malformed, wrapped in fences, truncated): re-prompt once with: "Your response was not valid JSON. Return only the corrected JSON object, no markdown fences." If still invalid, store a signal with `tags: ['signal:calibration', 'error:evaluator-malformed']` and output: "Calibration aborted — evaluator returned malformed JSON. Raw output logged." then stop.
++
++---
++
++# Step 5: Display Gap Report
++
++Parse GAP_REPORT and render the following output:
++
++```
++## Calibration Report — adversarial-review
++
++**Gap Score:** {gap_score}/10  (target: <3)
++**Haiku Find Rate:** {haiku_find_rate * 100}%  (target: ≥80%)
++
++### Missed by Haiku ({count} findings)
++{for each missed finding:}
++  - [{SEVERITY}] {description} — {why_matters}
++
++### False Positives from Haiku ({count})
++{for each false positive:}
++  - {description} — dismissed because: {reason_dismissed_by_opus}
++
++### Depth Gaps ({count})
++{for each depth gap:}
++  - **{finding}**
++    - Opus: {opus_evidence}
++    - Haiku: {haiku_evidence}
++    - Gap: {gap}
++
++### Prompt Improvements Recommended ({count})
++{for each improvement:}
++  - **Target:** {target}
++    **Change:** {improvement}
++    **Reason:** {reason}
++
++### Summary
++{summary}
++
++---
++*Results are diagnostic only. gap_score is NOT a benchmark metric.*
++```
++
++---
++
++# Step 6: Store LCM Signal
++
++Store the calibration result for trend tracking and the autoimprove learning loop.
++
++**If the `lcm_store` MCP tool is available**, call it with:
++```
++tags: ['signal:calibration', 'skill:adversarial-review', 'model:opus-vs-haiku', 'calibration:signal-only']
++content: |
++  gap_score: {gap_score}
++  haiku_find_rate: {haiku_find_rate}
++  missed_by_haiku_count: {count}
++  false_positives_count: {count}
++  prompt_improvements_count: {count}
++  summary: {summary}
++```
++
++**If lcm_store is NOT available**, write the result to `~/.autoimprove/calibration/` as a dated JSON file:
++- Create the directory if it does not exist: `mkdir -p ~/.autoimprove/calibration`
++- Write file: `~/.autoimprove/calibration/{YYYY-MM-DD}-ar-calibration.json`
++- Content: full GAP_REPORT JSON
++
++---
++
++## CRITICAL Goodhart Boundary
++
++- The `gap_score` field is DIAGNOSTIC ONLY.
++- It MUST NEVER be added to `autoimprove.yaml` benchmarks.
++- It MUST NEVER be used as a grind loop metric or to influence theme selection weights.
++- The experimenter sees: "your prompt needs improvement at X because of Y structural reason."
++- The experimenter does NOT see numeric gap trends in the benchmark pipeline.

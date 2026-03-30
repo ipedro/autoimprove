@@ -1,0 +1,7 @@
+high:security:global npm install runs unconditionally on every bootstrap without opt-in gate (LCM_BOOTSTRAP_INSTALL env var guard removed), risking side effects in managed package environments
+high:error-handling:DaemonClient.post errors are not surfaced to the progress tracker — HTTP failures that throw are caught by the outer catch block but the removed res.ok check means non-throw HTTP errors (5xx with body) are now typed as success data
+medium:correctness:tokensIn is double-counted for successful compactions — both the inline accumulation (before += before) and the later tokensIn += data.tokensBefore ?? conv.tokens execute in the same branch, inflating total tokens reported
+medium:correctness:errors array (progressErrors) is no longer passed to onProgress in the refactored skipped branch, meaning callers that track errors via onProgress patches will miss skipped-session errors
+medium:observability:hardcoded tokenPath uses ~/.lossless-claude/daemon.token with no fallback or configurability from CLI args — if users move their config dir the token is silently not found and auth fails without a clear error message
+low:docs:CLAUDE_PLUGIN_ROOT variable used in command fallback instructions is not documented anywhere in the diff — its availability and value in marketplace installs is assumed but not verified
+low:style:DaemonClient is constructed outside the try/catch loop so a constructor failure (missing token file read) would crash the entire batchCompact call rather than gracefully degrading per-session

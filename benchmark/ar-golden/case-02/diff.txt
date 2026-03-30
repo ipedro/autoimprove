@@ -1,0 +1,1225 @@
+diff --git a/UNBREAKABLE_RULES.md b/UNBREAKABLE_RULES.md
+index dff3fa4..eb7d55f 100644
+--- a/UNBREAKABLE_RULES.md
++++ b/UNBREAKABLE_RULES.md
+@@ -278,6 +278,36 @@ Direct implementation from the orchestrator session is only allowed per §13 esc
+ 
+ ---
+ 
++## 16. Thou Shall Introspect — Universal Constructive Feedback
++
++**Every entity in the org — from the cheapest Haiku implementor to the most powerful Opus reviewer — MUST run `/introspection` before lifecycle end.**
++
++This is non-negotiable. No entity shuts down, completes a task, or ends a session without reflecting on what it did.
++
++**What this means:**
++- **Teammates**: run `/introspection` before approving shutdown request
++- **Background agents** (Haiku implementors, spike agents): emit a lightweight introspection signal (3 questions: what worked, what broke, what to improve — ~100 tokens)
++- **Quality gate agents** (Opus AR, plan reviewers): full introspection (~500 tokens)
++- **Orchestrator**: introspection at sprint checkpoints and session end
++- **Every other agent spawned for any purpose**: at minimum, `lcm_store` a signal with `tags: [signal:introspection]`
++
++**The output feeds the learning loop:**
++1. `lcm_store` with `tags: [signal:introspection, agent:<name>, model:<model>]`
++2. If actionable improvement found: `gh issue create` with label `introspection`
++3. Autoimprove harvester collects signals → theme selection → grind loop improves skills/prompts
++4. Next cycle is better than the previous one
++
++**Why this is unbreakable:** The org's competitive advantage is its ability to learn autonomously. Every entity that skips introspection is a missed learning opportunity. A failed Haiku spike that doesn't report why it failed will fail the same way again. Introspection is the mechanism that converts experience into improvement.
++
++**Metrics (tracked by autoimprove):**
++- `introspection_coverage`: % of entities that ran introspection
++- `signal_density`: signals per sprint per model tier
++- `issue_generation_rate`: actionable issues per 100 introspection runs
++
++**Target:** 100% introspection coverage. Any entity that shuts down without introspecting is a process failure — investigate and fix the gap.
++
++---
++
+ ## Social Media Approval Amendments
+ 
+ _Co-CEOs may relax rule 4 per-platform here. Each amendment requires both signatures._
+@@ -308,3 +338,4 @@ _Co-CEOs may relax rule 4 per-platform here. Each amendment requires both signat
+ | 2026-03-27 | Fix (issue #6) | Fix duplicate §2 heading: renamed "## 2. Token Budget & Sprint Cadence" to "## 3. Token Budget & Sprint Cadence" and renumbered all subsequent sections §4–§14. Updated Amendments section reference from "rule 3" to "rule 4". Updated all changelog entries to match new section numbers. |
+ | 2026-03-28 | Pedro + Claude | Section 3: Clarify sprint model — "session" = Anthropic daily token allowance (NOT conversation context; LCM makes that irrelevant). Daily reset = sprint. Weekly = milestone. Milestone ceremony on weekly reset. Add AR-approved budget allocation table (Features 45%, Architecture 15%, Ops 10%, Security 10%, R&D 15%, Governance 5%, Hotfix Reserve 5%). |
+ | 2026-03-28 | Pedro + Claude | Section 15 (Teammate Orchestration): orchestrator is always a thin dispatch layer. All repo work via teammates in ~/Developer/<repo>/. Protocol doc at plans/teammate-orchestration-protocol.md. LCM auto-scoping + orchestrator responsiveness are the binding reasons. |
++| 2026-03-29 | Pedro + Claude | Section 16 (Thou Shall Introspect): Every entity — Haiku to Opus — runs /introspection before lifecycle end. Signals feed autoimprove harvester. Target: 100% coverage. Failed introspection = process failure. |
+diff --git a/hooks/workflow-canonical.md b/hooks/workflow-canonical.md
+index 99eecb7..1f685c7 100644
+--- a/hooks/workflow-canonical.md
++++ b/hooks/workflow-canonical.md
+@@ -6,7 +6,7 @@
+ 
+ **STEP 0 — PLAN**
+ - Invoke `Skill("plan-mode")` — plan before any code
+-- Read issue + repo context; run idea-matrix (3×3); AR on top options (background)
++- Read issue + repo context; run idea-matrix (3×3); spike top options w/ Haiku (parallel worktrees, max 3 rounds); AR on spike evidence (background); if no spike passes → won't-do: SendMessage orchestrator + await ack before closing
+ - Write `plans/<slug>.md` with approach, files, acceptance criteria, verification
+ - `SendMessage(to: "team-lead", ...)` with plan location — WAIT for autonomous approval
+ - **Do NOT edit files in `~/Developer/` before approval**
+@@ -64,8 +64,10 @@ When you encounter a design decision (more than one valid approach):
+ 
+ 1. **BRAINSTORM** — invoke `Skill("superpowers:brainstorming")` before any design work
+ 2. **IDEA-MATRIX** — invoke `Skill("autoimprove:idea-matrix", args: "<problem statement>")`
+-3. **ADVERSARIAL REVIEW** — invoke `Skill("autoimprove:adversarial-review", args: "<top options>")` in background (run_in_background: true)
++3. **SPIKE** — `Agent(model: "haiku", isolation: "worktree", run_in_background: true, ...)` per top option (parallel); collect `{ option, success, locs, test_result, failure_reason }`; if no spike satisfies → re-run 2 with failure data (loop until convergence or won't-do)
++4. **ADVERSARIAL REVIEW** — invoke `Skill("autoimprove:adversarial-review", args: "<spike results>")` in background (run_in_background: true)
++   - AR reviews actual spike evidence (diffs + test results), not hypotheticals
+    - Judge verdict is BINDING — implement the winning option
+-4. **IMPLEMENT** the Judge's recommendation
++5. **IMPLEMENT** the Judge's recommendation
+ 
+ Trivial decisions (single file, obvious fix, no branching logic) skip steps 1-3. Write `[DESIGN_DECISION: <winner> — Judge verdict at <file>]` in commit body.
+diff --git a/plans/issue-137-ar-impl-results.md b/plans/issue-137-ar-impl-results.md
+new file mode 100644
+index 0000000..f19bcf7
+--- /dev/null
++++ b/plans/issue-137-ar-impl-results.md
+@@ -0,0 +1,183 @@
++# AR Results — org-dashboard SKILL.md (issue #137)
++
++**Run type:** Inline (Enthusiast → Adversary → Judge)
++**Date:** 2026-03-29
++**Artifact reviewed:** `/Users/pedro/.claude/skills/org-dashboard/SKILL.md`
++
++---
++
++## Summary
++
++| Metric | Value |
++|--------|-------|
++| Total findings raised | 9 |
++| Confirmed | 6 |
++| Dismissed | 3 |
++| Critical | 1 |
++| High | 2 |
++| Medium | 2 |
++| Low | 1 |
++
++**Judge verdict: APPROVE WITH FIXES**
++
++The skill has correct architecture (single ctx_batch_execute, per-source fallbacks, correct YAML keys matching actual budget.yaml structure). Three runtime bugs will cause silently wrong data. Must be fixed before the PR.
++
++---
++
++## Confirmed Findings
++
++### CRITICAL
++
++#### F1 — `lcm_search` called with non-existent parameters
++
++**Location:** Step 3
++
++**Current code:**
++```json
++{
++  "types": ["signal", "decision"],
++  "last_n_days": 7,
++  "exclude_tags": ["test", "sandbox"]
++}
++```
++
++**Problem:** The actual `mcp__lcm__lcm_search` schema accepts only: `query` (required), `layers`, `limit`, `tags`. The parameters `types`, `last_n_days`, and `exclude_tags` do not exist and will be silently ignored. The result: LCM search returns all-time entries with no type or date filter, but the dashboard presents this as "last 7d signals/decisions" — wrong data displayed without any warning.
++
++**Fix:**
++```json
++{
++  "query": "signals decisions blockers org health",
++  "tags": ["signal"],
++  "limit": 50
++}
++```
++Run a second call for decisions: `{ "query": "decisions architecture", "tags": ["decision"], "limit": 20 }`. Filter results by timestamp client-side for the 7-day window (entries have a `created_at` field). The `exclude_tags` behavior must be implemented by post-filtering the returned results.
++
++---
++
++### HIGH
++
++#### F2 — `wc -l` gives wrong issue counts (always returns 1 for non-empty)
++
++**Location:** Step 2, commands 4a/4b/4c (issue counting)
++
++**Current code:**
++```shell
++gh issue list --repo ipedro/claudinho --state closed --label "wontfix" --json number --limit 50 2>/dev/null | wc -l
++```
++
++**Problem:** `gh issue list --json number` outputs compact single-line JSON (e.g. `[{"number":1},{"number":2}]`). `wc -l` counts newlines, returning `1` for any non-empty result and `1` for an empty array `[]`. Every count will be `1` regardless of actual issue count.
++
++**Fix:** Replace `wc -l` with `jq length`:
++```shell
++gh issue list --repo ipedro/claudinho --state closed --label "wontfix" --json number --limit 50 2>/dev/null | jq length
++```
++
++---
++
++#### F3 — TSV column named `outcome` does not exist — actual column is `verdict`
++
++**Location:** Step 4
++
++**Current instruction:** "Rows where outcome column = 'kept' vs 'discarded'"
++
++**Actual TSV header (verified):**
++```
++id  timestamp  theme  verdict  improved_metrics  regressed_metrics  tokens  wall_time  commit_msg
++```
++
++**Problem:** There is no `outcome` column. Any script looking for `outcome` will find nothing and report 0 kept / 0 discarded silently. The correct column is `verdict`.
++
++**Fix:** Replace all references to `outcome` with `verdict` in Step 4. Also verify the actual `verdict` values used in the TSV (likely `kept`/`discarded` or similar) — confirm against a live row.
++
++---
++
++### MEDIUM
++
++#### F4 — JSON output contract missing `resets_at` fields
++
++**Location:** Step 5 JSON schema (`budget_status` object)
++
++**Problem:** The render template (Step 6) uses the placeholder `<weekly_reset_date>`, and the parsing rules in Step 5 say to read `session.resets_at` and `weekly.resets_at`. However, the JSON contract for `budget_status` does not include these fields:
++
++```json
++"budget_status": {
++  "session_pct": 0,
++  "weekly_pct": 0,
++  "sonnet_pct": 0,
++  "last_updated": "<timestamp>",
++  "stale": false,
++  "available": true
++  // ← missing: session_resets_at, weekly_resets_at, sonnet_resets_at
++}
++```
++
++**Impact:** Phase 2 Telegram consumers cannot access reset timestamps from the JSON output. The render template placeholder `<weekly_reset_date>` has no data source.
++
++**Fix:** Add to the JSON contract:
++```json
++"session_resets_at": "<ISO timestamp>",
++"weekly_resets_at": "<ISO timestamp>",
++"sonnet_resets_at": "<ISO timestamp>"
++```
++
++---
++
++#### F5 — Gate compliance logic incorrectly counts `budget:delivery`/`budget:rnd` as sufficient
++
++**Location:** Step 5, gate_compliance parsing rules
++
++**Current text:** "A PR also counts if it has `budget:delivery` or `budget:rnd`."
++
++**Problem:** `budget:delivery` and `budget:rnd` are budget-allocation tags, not quality gate markers. A PR with only `budget:delivery` and none of `ar-coverage`, `plan-approved`, `tests-verified` should not count as compliant. This clause inflates the compliance rate.
++
++**Fix:** Remove the `budget:delivery`/`budget:rnd` exception from compliance counting. A PR is compliant only if it has all three required labels OR has `ar-exempt`/`gates-exempt` (which legitimately bypass gates). Update the rule to:
++
++> A PR is compliant if it has all 3 required labels, OR has label `ar-exempt` or `gates-exempt` (explicit bypass markers).
++
++---
++
++### LOW
++
++#### F6 — Multi-file experiments.tsv aggregation unspecified
++
++**Location:** Step 4
++
++**Problem:** Step 2 finds up to 5 `experiments.tsv` paths (`head -5`). Step 4 says "for each path found... call `ctx_execute_file`" but gives no instruction on how to aggregate counts across multiple files (sum totals? use only the first? error on multiple?).
++
++**Impact:** Low risk — currently only one file exists at `/Users/pedro/Developer/autoimprove/experiments/experiments.tsv`. But if a second autoimprove instance appears, behavior is undefined.
++
++**Fix:** Add a note: "If multiple files found, aggregate totals (sum kept + discarded counts). Note each file's source repo in the `recent` list."
++
++---
++
++## Dismissed Findings
++
++| Finding | Reason |
++|---------|--------|
++| `gh pr list --limit 30` merged window | Acceptable for current org velocity; most-recent-first ordering guarantees 7-day coverage at current merge rate. |
++| `ctx_batch_execute` interface formatting | Commands and queries are correctly passed as separate parameters. No bug. |
++| GITHUB_TOKEN raw Bash check (1-line output) | Within the <20-line rule. Acceptable per context-mode.md. |
++
++---
++
++## What Was Verified as Correct
++
++- YAML parsing keys match actual `budget.yaml`: `session.pct_used`, `weekly.pct_used`, `sonnet.pct_used`, `last_updated` at root — all correct.
++- `gh pr list --json number,title,labels,isDraft` and `--json number,title,labels,mergedAt` — valid fields confirmed against live API.
++- `gh issue list --json number` — valid.
++- All large-output commands routed through `ctx_batch_execute` — compliant.
++- `ctx_execute` (JavaScript) for OpenClaw HTTP — correct, avoids blocked curl.
++- `ctx_execute_file` for TSV parsing — correct approach.
++- Per-source fallback design — every source has independent `⚠️ [SOURCE: unavailable]` path.
++- GITHUB_TOKEN gate prevents GitHub calls when token missing.
++
++---
++
++## Must-Fix Before PR
++
++1. **[CRITICAL - F1]** Replace `lcm_search` call in Step 3 — remove `types`, `last_n_days`, `exclude_tags`. Use `query` + `tags` + `limit`. Implement 7-day and type filtering client-side on returned results.
++2. **[HIGH - F2]** Replace `wc -l` with `jq length` for all three issue count commands.
++3. **[HIGH - F3]** Replace `outcome` with `verdict` everywhere in Step 4.
++4. **[MEDIUM - F4]** Add `session_resets_at`, `weekly_resets_at`, `sonnet_resets_at` to the JSON output contract in Step 5.
++5. **[MEDIUM - F5]** Remove `budget:delivery`/`budget:rnd` from gate compliance counting. Replace with `ar-exempt`/`gates-exempt` as the legitimate bypass markers.
+diff --git a/plans/issue-137-ar-results.md b/plans/issue-137-ar-results.md
+new file mode 100644
+index 0000000..b673568
+--- /dev/null
++++ b/plans/issue-137-ar-results.md
+@@ -0,0 +1,119 @@
++# AR Results — Issue #137 Org Telemetry Dashboard
++
++**Date:** 2026-03-29
++**Run folder:** /Users/pedro/.claude/plans/ (inline run, no separate folder — review executed directly)
++**Rounds:** 2 (converged at Round 2)
++**Proposal:** /org-dashboard CLI skill — Phase 1 (CLI aggregator) + Phase 2 (Telegram daily digest via Alfredo)
++
++---
++
++## Tally
++
++| Category | Count |
++|----------|-------|
++| Total findings raised | 11 |
++| Confirmed | 9 |
++| Dismissed (debunked) | 2 |
++| Confirmed critical | 1 |
++| Confirmed high | 3 |
++| Confirmed medium | 4 |
++| Confirmed low | 1 |
++
++---
++
++## Top Confirmed Findings
++
++### CRITICAL — F1: ~/.xgh/budget.yaml does not exist
++
++The proposal reads `~/.xgh/budget.yaml` for token budget data. This file does not exist in the org schema. Token budget is an Anthropic session-level concept with no YAML file representation. The data source must be removed from Phase 1.
++
++**Fix:** Remove from data sources. If budget visibility is needed, document separately how to expose session budget state.
++
++---
++
++### HIGH — F3: GitHub PAT env var undefined
++
++Proposal says "GitHub API auth via PAT env var from day one" but does not define the var name or injection mechanism for scheduled xgh jobs. The `gh` CLI convention is `GITHUB_TOKEN`. xgh `ingest.yaml` scheduled entries must explicitly pass `env: {GITHUB_TOKEN: $GITHUB_TOKEN}` — headless xgh runners do not inherit env by default.
++
++**Fix:** Define `GITHUB_TOKEN` as the canonical var. Add `env: {GITHUB_TOKEN: $GITHUB_TOKEN}` to all ingest.yaml entries for this skill.
++
++---
++
++### HIGH — F10: No error handling spec for unavailable data sources
++
++Skill aggregates 4+ data sources. If any source fails (GitHub rate limit, empty LCM, missing TSV), the skill has no documented degradation strategy. Silent omission of failed sources is worse than an error.
++
++**Fix:** Each source failure must render as `[SOURCE: unavailable]` in output. Skill must not crash if any single source fails.
++
++---
++
++### HIGH — F4 (split→medium) / Overall Alfredo gap
++
++Phase 2 Alfredo integration mechanism is unspecified. The proposal says Alfredo "wraps the same aggregator logic" without clarifying the invocation path (subprocess? MCP tool? skill call?). Downgraded to medium but must be resolved before Phase 2 begins.
++
++**Fix:** Specify Phase 2 as: "xgh ingest.yaml cron triggers /org-dashboard skill, output piped to telegram MCP tool via Alfredo session."
++
++---
++
++### MEDIUM — F8: No output format contract between Phase 1 and Phase 2
++
++Phase 1 (CLI) and Phase 2 (Telegram) need different rendering of the same data. If both consume the same unstructured text output, Phase 2 becomes brittle. A shared JSON structure is required.
++
++**Fix:** Aggregator outputs structured JSON with keys: `github_health`, `budget_status`, `lcm_signals`, `experiments_summary`. CLI skill renders it as text; Telegram skill formats same JSON for Telegram.
++
++---
++
++### MEDIUM — F7: LCM query scope undefined
++
++"Queries LCM for signals/decisions" with no filter spec will return unbounded noise across all projects and time ranges.
++
++**Fix:** lcm_search with filters: `types=[signal,decision]`, `last_7_days=true`, exclude tags `[test,sandbox]`.
++
++---
++
++### MEDIUM — F2 (split): experiments.tsv path not standardized
++
++The proposal treats experiments.tsv as a single global file. It is per-project, living in each project's working directory.
++
++**Fix:** Glob pattern `~/Developer/*/autoimprove/experiments.tsv` to collect all project TSVs.
++
++---
++
++### LOW — F9: ingest.yaml entry mislabeled as "optional"
++
++Phase 2 requires a scheduled ingest.yaml entry. Calling it "optional" in the deliverables is misleading.
++
++**Fix:** Change to "xgh ingest.yaml entry (required for Phase 2 daily digest)."
++
++---
++
++## Dismissed Findings
++
++| ID | Finding | Reason |
++|----|---------|--------|
++| F5 | §15 violation — skill should run in teammate context | Dismissed. §15 targets repo-scoped implementation work, not read-only aggregation skills. /org-dashboard is equivalent to /triage and /standup — established orchestrator-context skill precedents. |
++| F6 | GitHub rate limiting risk | Dismissed as duplicate of F3. With GITHUB_TOKEN auth in place, 20–40 API calls/run is within the 5000/hr limit. |
++
++---
++
++## Judge Verdict
++
++**Overall shape: VALID with blockers.** The proposal is architecturally sound — CLI skill + Alfredo phase, xgh ingest.yaml scheduling, no web UI or GitHub Actions, PAT auth. The fundamentals are correct.
++
++**Blockers before implementation:**
++1. Remove `~/.xgh/budget.yaml` as a data source (it does not exist)
++2. Define `GITHUB_TOKEN` env var name + xgh injection mechanism
++3. Specify error handling / degradation behavior
++4. Define structured JSON output contract (enables Phase 2 without rewriting)
++
++**Recommendation:** Update the proposal spec with the 4 blockers above, then proceed. Phase 1 is deliverable as a single skill file once the data sources are corrected. Phase 2 is a thin wrapper on Phase 1's JSON output — the architecture is sound.
++
++---
++
++## Implementation Notes (from confirmed findings)
++
++- All API/file reads must use `ctx_batch_execute` to avoid context flooding (context-mode.md routing rules)
++- LCM query: `lcm_search(types=[signal,decision], last_7_days=true, exclude_tags=[test,sandbox])`
++- experiments.tsv glob: `~/Developer/*/autoimprove/experiments.tsv`
++- ingest.yaml entry must include: `env: {GITHUB_TOKEN: $GITHUB_TOKEN}`
++- Output format: structured JSON dict, rendered differently by Phase 1 (CLI text) and Phase 2 (Telegram format)
+diff --git a/plans/issue-137-phase1-result.md b/plans/issue-137-phase1-result.md
+new file mode 100644
+index 0000000..e75ca5a
+--- /dev/null
++++ b/plans/issue-137-phase1-result.md
+@@ -0,0 +1,46 @@
++# Issue #137 — Phase 1 Result: `/org-dashboard` skill
++
++## File path
++
++`/Users/pedro/.claude/skills/org-dashboard/SKILL.md`
++
++## Sections implemented
++
++All 7 sections as specified:
++
++1. **TOKEN BUDGET** — reads `~/.xgh/budget.yaml`, renders 10-char progress bars for
++   session/weekly/sonnet, staleness warning if `last_updated` > 1h ago.
++2. **PR HEALTH (4 repos)** — open + merged-7d + blocked counts per repo via
++   `gh pr list --json`.
++3. **QUALITY GATE COMPLIANCE** — tracks `ar-coverage`, `plan-approved`,
++   `tests-verified` labels on merged PRs (7d window), reports rate + most missing labels.
++4. **WON'T-DO / SHIPPED RATIO** — issue counts by label across `ipedro/claudinho`
++   (canonical issue tracker). Ratio N:N display.
++5. **AUTOIMPROVE EXPERIMENTS** — globs `~/Developer/*/autoimprove/experiments.tsv`,
++   parses keep/discard counts + last 3 experiments via `ctx_execute_file`.
++6. **LCM SIGNALS (last 7d)** — `mcp__lcm__lcm_search` with
++   `types=[signal,decision]`, `last_7_days=true`, `exclude_tags=[test,sandbox]`.
++   Themes + blockers extracted from entry summaries.
++7. **OPENCLAW POOL** — HTTP GET to `http://100.81.117.80:3456` via `ctx_execute`
++   (JavaScript fetch, never raw curl).
++
++## Implementation notes / deviations from spec
++
++- **Skill lives in `skills/org-dashboard/SKILL.md`** (subdirectory pattern), not a
++  flat `.md` file. This follows the established convention for all local skills that
++  have YAML frontmatter (budget-check, plugin-cleanup, etc. all use this layout).
++- **Issues ratio uses `ipedro/claudinho` only** — spec said "won't-do / shipped ratio"
++  without specifying per-repo breakdown. Claudinho is the canonical issue tracker for
++  the org. If per-repo breakdown is needed, this is a one-line expansion.
++- **Gate compliance scans merged PRs (last 7d, all 4 repos combined)** — spec said
++  "recent PRs"; 7d window was chosen for consistency with the LCM signal window.
++- **`budget:delivery` / `budget:rnd` are treated as bonus labels** — they improve the
++  compliant count but are not among the 3 required labels. The spec said "track" these
++  labels, not require them for compliance.
++- **`ctx_batch_execute` used for all gh commands** — compliant with context-mode rules.
++  OpenClaw routed through `ctx_execute` JavaScript fetch as required.
++
++## Ready for AR
++
++Yes — all spec requirements met, fallback handling documented for every source,
++context-mode compliance enforced throughout, GITHUB_TOKEN prerequisite noted at top.
+diff --git a/plans/issue-137-plan.md b/plans/issue-137-plan.md
+new file mode 100644
+index 0000000..566966a
+--- /dev/null
++++ b/plans/issue-137-plan.md
+@@ -0,0 +1,184 @@
++# Plan: Org Telemetry Dashboard — Issue #137
++
++**Status:** AR COMPLETE — AWAITING IMPLEMENTATION APPROVAL
++**Date:** 2026-03-29
++**Branch:** feat/org-dashboard-137
++
++---
++
++## Decision
++
++**Option E (Combo): CLI skill `/org-dashboard` + Telegram daily digest**
++
++Rejected:
++- **A (web dashboard)**: 10x complexity, hosting/secrets risk, no live data without infra
++- **D (GitHub Projects + Actions)**: data model wrong for telemetry, 4x maintenance surface, no LCM/budget integration
++- **C standalone**: push-only, no drill-down, notification fatigue after week 2
++
++Selected because:
++- Zero new infrastructure
++- CLI is where Pedro already works (Claude Code open all day)
++- Telegram digest reuses same aggregator logic — no duplicate code
++- All data sources already accessible: `gh` CLI, LCM MCP, budget.yaml, experiments.tsv
++
++---
++
++## Architecture
++
++```
++/org-dashboard skill
++        │
++        ├── GitHub API (via gh CLI)
++        │   ├── PR status per repo (open/merged/blocked)
++        │   ├── Quality gate label compliance
++        │   ├── Won't-do / Shipped ratio (Resolution field)
++        │   └── Issues closed per sprint
++        │
++        ├── ~/.xgh/budget.yaml
++        │   ├── session pct_used / pct_left / resets_at
++        │   ├── weekly pct_used / pct_left / resets_at
++        │   └── sonnet pct_used / pct_left
++        │
++        ├── LCM (mcp__lcm__lcm_search)
++        │   ├── Recent decisions (last 7 days)
++        │   ├── Introspection signals / recurring blockers
++        │   └── Teammate lifecycle entries
++        │
++        └── ~/Developer/autoimprove/experiments/experiments.tsv
++            ├── Kept vs discarded experiments
++            └── Recent grind loop outcomes
++```
++
++Telegram digest = thin wrapper calling same logic → formatted markdown → Alfredo MCP → Pedro.
++
++---
++
++## Data Sources Confirmed
++
++| Source | Path/Method | Available |
++|--------|-------------|-----------|
++| Budget | `~/.xgh/budget.yaml` | ✅ confirmed |
++| Autoimprove experiments | `~/Developer/autoimprove/experiments/experiments.tsv` | ✅ confirmed |
++| GitHub PRs/issues | `gh pr list --repo <org/repo>` + GraphQL for labels | ✅ via gh CLI |
++| LCM decisions | `mcp__lcm__lcm_search` | ✅ MCP available |
++| OpenClaw proxy status | `http://100.81.117.80:3456` | ✅ (ctx_execute HTTP) |
++
++---
++
++## Org Repos
++
++```
++ipedro/claudinho
++lossless-claude/lcm
++extreme-go-horse/xgh
++ipedro/autoimprove
++```
++
++---
++
++## Quality Gate Labels to Track
++
++- `ar-coverage` — adversarial review ran
++- `plan-approved` — plan mode completed
++- `tests-verified` — test gate passed
++- `budget:delivery` / `budget:rnd` — budget tag present
++
++Compliance rate = PRs with all required labels / total merged PRs (last sprint).
++
++---
++
++## Phased Delivery
++
++### Phase 1 — CLI skill `/org-dashboard` (ship first)
++**Deliverable:** `~/.claude/skills/org-dashboard.md`
++
++Sections rendered:
++1. **Budget** — session/weekly/sonnet bars from budget.yaml
++2. **PR Health** — open/merged/blocked per repo (gh CLI)
++3. **Quality Gate Compliance** — label % across recent merged PRs
++4. **Won't-do / Shipped ratio** — Resolution field counts
++5. **Autoimprove** — experiments kept vs discarded (last 30 days from TSV)
++6. **LCM Signals** — last 3 introspection themes, recent blockers
++7. **OpenClaw Pool** — proxy pool status
++
++**No scheduling required for Phase 1.** Pure on-demand skill.
++
++### Phase 2 — Telegram daily digest
++**Deliverable:** entry in `~/.xgh/ingest.yaml` (NOT CronCreate — per MEMORY.md)
++
++- Runs at 09:00 daily (or configurable)
++- Calls same aggregator logic as `/org-dashboard`
++- Formats as compact Telegram markdown: emoji status indicators, anomaly highlights
++- Uses existing `mcp__plugin_telegram_telegram__reply` infrastructure
++
++### Phase 3 — LCM depth + trend history (optional, later)
++- Time-series budget tracking (append to a JSONL file)
++- Teammate lifecycle metrics (time-to-PR calculation)
++- Skill quality benchmark trends
++
++---
++
++## Implementation Notes
++
++1. **GitHub API auth**: Use `GITHUB_TOKEN` env var from day one — 4 repos × multiple queries risks the 60 req/h unauthenticated limit
++2. **Scheduling**: `~/.xgh/ingest.yaml` only (per MEMORY.md `xgh terraform = ingest.yaml`)
++3. **No CronCreate** — confirmed blocked in org rules
++4. **OpenClaw HTTP call**: use `ctx_execute` sandbox to avoid flooding context with raw response
++5. **Skill file location**: `~/.claude/skills/org-dashboard.md` — local skill, not a plugin
++
++---
++
++## Risks (pre-AR)
++
++| Risk | Severity | Mitigation |
++|------|----------|------------|
++| GitHub API rate limit (60 req/h unauth) | High | PAT via GITHUB_TOKEN from day one |
++| budget.yaml staleness (refreshed by fetch-budget.sh) | Medium | Show `last_updated` field, warn if >1h stale |
++| experiments.tsv schema changes | Low | Guard with column count check |
++| LCM search latency | Low | Run parallel queries, set timeout |
++| Telegram digest scope creep | Low | Phase 2 is a wrapper, not a rewrite |
++
++---
++
++## AR Results
++
++Full results: `plans/issue-137-ar-results.md` — 11 findings, 9 confirmed, 2 dismissed.
++
++**F1 CRITICAL (debunked by author):** AR claimed `~/.xgh/budget.yaml` does not exist. Incorrect — confirmed present at `~/.xgh/budget.yaml` with session/weekly/sonnet fields. Retaining as data source.
++
++**Confirmed blockers incorporated below:**
++
++| ID | Severity | Fix Applied |
++|----|----------|-------------|
++| F3 | HIGH | `GITHUB_TOKEN` is canonical var; ingest.yaml entries must include `env: {GITHUB_TOKEN: $GITHUB_TOKEN}` |
++| F10 | HIGH | Each source failure renders as `[SOURCE: unavailable]` — skill never crashes on single source failure |
++| F8 | MEDIUM | Aggregator outputs structured JSON; CLI renders text, Telegram renders formatted markdown from same JSON |
++| F7 | MEDIUM | LCM query: `types=[signal,decision], last_7_days=true, exclude_tags=[test,sandbox]` |
++| F2 | MEDIUM | experiments.tsv glob: `~/Developer/*/autoimprove/experiments.tsv` (not single path) |
++| F9 | LOW | ingest.yaml entry is "required for Phase 2" (not optional) |
++
++---
++
++## Files to Create
++
++- `~/.claude/skills/org-dashboard.md` — Phase 1 skill
++- `~/.xgh/ingest.yaml` — Phase 2 Telegram cron entry (append only)
++
++## Files NOT to create
++
++- No web app, no GitHub Actions, no new MCP server, no database
++
++---
++
++## Acceptance Criteria
++
++- [ ] `/org-dashboard` runs in <15s on cold LCM index
++- [ ] All 7 sections render without errors across all 4 repos
++- [ ] GitHub API authenticated (no rate limit warnings)
++- [ ] Budget section shows stale warning if last_updated >1h
++- [ ] Phase 2: Telegram message arrives daily, formatted correctly
++- [ ] No new hosting, no new persistent processes
++
++---
++
++*AR verdict pending — do not begin implementation until AR results reviewed and plan updated.*
+diff --git a/plans/issue-139-plan.md b/plans/issue-139-plan.md
+new file mode 100644
+index 0000000..0a0cb93
+--- /dev/null
++++ b/plans/issue-139-plan.md
+@@ -0,0 +1,60 @@
++# Plan: spike-before-AR workflow — Haiku prototype spikes before adversarial review (#139)
++
++## Approach
++
++Insert a **spike sub-step** between idea-matrix and adversarial review across all three workflow files. Haiku agents run parallel isolated spikes; AR receives real evidence instead of debating hypotheticals. If no spike satisfies, failure data feeds back into a new idea-matrix round (recursive loop).
++
++[SKIP_IDEA_MATRIX: single canonical approach described in issue — no branching design decisions, just propagating one pattern across 3 files]
++
++## What changes
++
++### `skills/plan-mode/SKILL.md`
++- Renumber current 0.3 (AR) → 0.4, 0.4 (write plan) → 0.5, 0.5 (submit) → 0.6, 0.6 (wait) → 0.7
++- Insert new **step 0.3 — Spike top options**:
++  - Spawn one `Agent(model: "haiku", isolation: "worktree", ...)` per top option (parallel)
++  - Each Haiku agent: implement the option, run tests, return structured result
++  - Collect: `{ option, success, locs, test_result, failure_reason }`
++  - **Any spike satisfactory?**
++    - YES → proceed to 0.4 (AR with spike evidence as context)
++    - NO → re-run 0.2 (idea-matrix round N+1 with failure data injected as context)
++  - **Exit conditions:**
++    1. Convergence: spike passes all gates → proceed to AR
++    2. Won't do: no viable approach after N rounds → close issue with full spike data
++
++### `hooks/workflow-canonical.md`
++- STEP 0 one-liner: replace `AR on top options (background)` with `spike top options w/ Haiku (parallel worktrees); AR on spike evidence (background)`
++- Autonomous Design Decisions section: add spike step between IDEA-MATRIX and ADVERSARIAL REVIEW:
++  - **3. SPIKE** — `Agent(model: "haiku", isolation: "worktree", ...)` per option; collect results; loop if none satisfactory
++  - Renumber current step 3 (ADVERSARIAL REVIEW) → 4, step 4 (IMPLEMENT) → 5
++
++### `skills/spawn-teammate/SKILL.md`
++- In the **Mandatory Workflow Block** (STEP 0 copy): add spike sub-step line after idea-matrix
++- In the **Autonomous Design Decision Block**: add SPIKE step (same as workflow-canonical change)
++
++## Files
++
++- `skills/plan-mode/SKILL.md` — insert 0.3 spike step, renumber 0.3→0.7, update AR step to reference spike evidence
++- `hooks/workflow-canonical.md` — update STEP 0 summary line + Autonomous Design Decisions section
++- `skills/spawn-teammate/SKILL.md` — update mandatory workflow block + design decision block
++
++## Acceptance Criteria
++
++- [ ] `plan-mode/SKILL.md` has step 0.3 with Haiku Agent call, structured result collection, YES/NO branch, recursive loop, and exit conditions
++- [ ] `workflow-canonical.md` STEP 0 mentions spike step; Autonomous Design Decisions has SPIKE as step 3 (renumbered)
++- [ ] `spawn-teammate/SKILL.md` mandatory workflow block and design decision block both updated
++- [ ] All three files consistent — spike appears in same position in every workflow reference
++- [ ] No test suite exists for this repo — `[NO_TEST_SUITE: claudinho]` in PR body
++
++## Scope
++
++3 files, estimated complexity: low, risk level: low (documentation only — no executable code changed)
++
++## Verification
++
++Manual: Read all three files and verify spike step appears consistently after idea-matrix and before AR, with correct branching logic (YES→AR, NO→loop back to idea-matrix).
++
++```bash
++grep -n "spike\|Spike\|SPIKE" skills/plan-mode/SKILL.md hooks/workflow-canonical.md skills/spawn-teammate/SKILL.md
++```
++
++Expected: spike references appear in all three files at the correct positions.
+diff --git a/skills/org-dashboard/SKILL.md b/skills/org-dashboard/SKILL.md
+new file mode 100644
+index 0000000..c040020
+--- /dev/null
++++ b/skills/org-dashboard/SKILL.md
+@@ -0,0 +1,344 @@
++---
++name: org-dashboard
++description: |
++  Aggregates org telemetry and renders a formatted terminal dashboard. Covers
++  token budget, PR health across 4 repos, quality gate compliance, won't-do/shipped
++  ratio, autoimprove experiments, LCM signals, and OpenClaw pool status.
++  Triggers: "org dashboard", "dashboard", "org telemetry", "org health", "/org-dashboard".
++version: 0.1.0
++observability:
++  emit: lcm
++  tags:
++    - "skill:org-dashboard"
++    - "type:dashboard"
++  success_criteria:
++    - "all 7 sections rendered"
++    - "unavailable sources show fallback warning, not crash"
++    - "lcm_store called with skill:org-dashboard tag"
++  metrics:
++    - name: duration_ms
++      type: gauge
++    - name: sources_available
++      type: gauge
++---
++
++# Org Dashboard — Org Telemetry Report
++
++> **Prerequisite:** `GITHUB_TOKEN` must be set in the environment. All `gh` CLI calls
++> use this token. If not set, all GitHub sections render as `⚠️ [GITHUB: unavailable]`.
++
++Render a 7-section terminal report aggregating token budget, PR health, quality gate
++compliance, shipped/won't-do ratio, autoimprove experiments, LCM signals, and OpenClaw
++pool status for the org's 4 canonical repos.
++
++---
++
++## Org Repos
++
++```
++ipedro/claudinho
++lossless-claude/lcm
++extreme-go-horse/xgh
++ipedro/autoimprove
++```
++
++---
++
++## Step 1 — Verify GITHUB_TOKEN
++
++Check whether `GITHUB_TOKEN` is set. In a Bash call:
++
++```shell
++[ -n "$GITHUB_TOKEN" ] && echo "TOKEN_SET" || echo "TOKEN_MISSING"
++```
++
++If `TOKEN_MISSING`, mark all GitHub sections as `⚠️ [GITHUB: unavailable]` and proceed
++to the next steps — do NOT abort the entire dashboard.
++
++---
++
++## Step 2 — Gather All Data Sources
++
++Use a single `ctx_batch_execute` call to collect all shell-based data (prevents raw
++`gh pr list` output flooding context). Never use raw Bash for `gh` commands whose output
++exceeds ~20 lines.
++
++### Commands to batch
++
++```shell
++# 1. Token budget
++cat ~/.xgh/budget.yaml 2>/dev/null || echo "BUDGET_UNAVAILABLE"
++
++# 2. PR health — open PRs per repo (last 7d merged via separate call below)
++gh pr list --repo ipedro/claudinho --state open --json number,title,labels,isDraft --limit 50 2>/dev/null || echo "PR_UNAVAILABLE_claudinho"
++gh pr list --repo lossless-claude/lcm --state open --json number,title,labels,isDraft --limit 50 2>/dev/null || echo "PR_UNAVAILABLE_lcm"
++gh pr list --repo extreme-go-horse/xgh --state open --json number,title,labels,isDraft --limit 50 2>/dev/null || echo "PR_UNAVAILABLE_xgh"
++gh pr list --repo ipedro/autoimprove --state open --json number,title,labels,isDraft --limit 50 2>/dev/null || echo "PR_UNAVAILABLE_autoimprove"
++
++# 3. Merged PRs last 7d (for health + gate compliance)
++gh pr list --repo ipedro/claudinho --state merged --json number,title,labels,mergedAt --limit 30 2>/dev/null || echo "MERGED_UNAVAILABLE_claudinho"
++gh pr list --repo lossless-claude/lcm --state merged --json number,title,labels,mergedAt --limit 30 2>/dev/null || echo "MERGED_UNAVAILABLE_lcm"
++gh pr list --repo extreme-go-horse/xgh --state merged --json number,title,labels,mergedAt --limit 30 2>/dev/null || echo "MERGED_UNAVAILABLE_xgh"
++gh pr list --repo ipedro/autoimprove --state merged --json number,title,labels,mergedAt --limit 30 2>/dev/null || echo "MERGED_UNAVAILABLE_autoimprove"
++
++# 4. Issues with won't-do / shipped labels (use jq length — wc -l always returns 1 on JSON)
++gh issue list --repo ipedro/claudinho --state closed --label "wontfix" --json number --limit 50 2>/dev/null | jq length || echo "0"
++gh issue list --repo ipedro/claudinho --state closed --label "shipped" --json number --limit 50 2>/dev/null | jq length || echo "0"
++gh issue list --repo ipedro/claudinho --state open --label "needs-info" --json number --limit 50 2>/dev/null | jq length || echo "0"
++
++# 5. Autoimprove experiments
++find ~/Developer -name "experiments.tsv" -path "*/autoimprove/*" 2>/dev/null | head -5 || echo "EXPERIMENTS_UNAVAILABLE"
++```
++
++Also call `ctx_execute` for the OpenClaw HTTP check (never raw curl):
++
++```javascript
++// ctx_execute — language: javascript
++try {
++  const r = await fetch("http://100.81.117.80:3456");
++  const text = await r.text();
++  console.log("OPENCLAW_STATUS:" + r.status);
++  console.log(text.substring(0, 500));
++} catch (e) {
++  console.log("OPENCLAW_UNAVAILABLE:" + e.message);
++}
++```
++
++### Queries to pass to ctx_batch_execute
++
++```
++["budget yaml content", "open pull requests by repo", "merged pull requests labels",
++ "wontfix shipped issues count", "autoimprove experiments file paths"]
++```
++
++---
++
++## Step 3 — Query LCM Signals
++
++Call `mcp__lcm__lcm_search` **twice** (lcm_search only accepts `query`, `layers`, `limit`, `tags` — no date or type filters):
++
++```json
++// Call 1 — decisions
++{ "query": "org decisions architecture", "tags": ["decision"], "limit": 20 }
++
++// Call 2 — signals
++{ "query": "org signals health blockers", "tags": ["signal"], "limit": 20 }
++```
++
++Filter results client-side to the last 7 days by comparing each entry's timestamp to `Date.now() - 7*86400*1000`. Exclude entries whose tags include "test" or "sandbox".
++
++If LCM is unavailable or returns an error, mark section 6 as `⚠️ [LCM: unavailable]`
++and continue.
++
++---
++
++## Step 4 — Read Autoimprove Experiments
++
++For each experiments.tsv path found in Step 2, call `ctx_execute_file` to parse it
++without dumping raw TSV into context. The TSV schema is:
++`id, timestamp, theme, verdict, improved_metrics, regressed_metrics, tokens, wall_time, commit_msg`
++
++Extract across ALL found TSV files (aggregate):
++- Total rows (experiments)
++- Rows where `verdict` column = "kept" (count as kept)
++- Rows where `verdict` column = "discarded" (count as discarded)
++- Other verdict values (e.g. "neutral") counted separately but not in keep_rate_pct denominator
++- Last 3 experiments by timestamp: theme + verdict
++
++If no file found, mark section 5 as `⚠️ [EXPERIMENTS: unavailable]`.
++
++---
++
++## Step 5 — Parse and Structure Data
++
++Build an internal JSON object with these keys:
++
++```json
++{
++  "timestamp": "<ISO timestamp>",
++  "budget_status": {
++    "session_pct": 0,
++    "weekly_pct": 0,
++    "sonnet_pct": 0,
++    "session_resets_at": "<ISO timestamp>",
++    "weekly_resets_at": "<ISO timestamp>",
++    "last_updated": "<timestamp>",
++    "stale": false,
++    "available": true
++  },
++  "github_health": {
++    "available": true,
++    "repos": {
++      "ipedro/claudinho":    { "open": 0, "merged_7d": 0, "blocked": 0 },
++      "lossless-claude/lcm": { "open": 0, "merged_7d": 0, "blocked": 0 },
++      "extreme-go-horse/xgh":{ "open": 0, "merged_7d": 0, "blocked": 0 },
++      "ipedro/autoimprove":  { "open": 0, "merged_7d": 0, "blocked": 0 }
++    }
++  },
++  "gate_compliance": {
++    "available": true,
++    "rate_pct": 0,
++    "compliant": 0,
++    "total": 0,
++    "missing_labels": []
++  },
++  "ratio": {
++    "wontdo": 0,
++    "shipped": 0,
++    "needs_info": 0
++  },
++  "experiments_summary": {
++    "available": true,
++    "kept": 0,
++    "discarded": 0,
++    "keep_rate_pct": 0,
++    "recent": []
++  },
++  "lcm_signals": {
++    "available": true,
++    "decisions": 0,
++    "signals": 0,
++    "themes": [],
++    "blockers": []
++  },
++  "openclaw_status": {
++    "available": true,
++    "status": "healthy",
++    "details": ""
++  }
++}
++```
++
++**Parsing rules:**
++
++- **budget_status**: Parse YAML fields `session.pct_used`, `weekly.pct_used`,
++  `sonnet.pct_used`, `last_updated`. Also read `session.resets_at` and
++  `weekly.resets_at` for the reset timestamps. Set `stale: true` if
++  `last_updated` is more than 1 hour ago.
++- **github_health**: For each repo, count open PRs directly. For merged_7d, filter
++  merged PRs where `mergedAt` is within last 7 days. For blocked, count open PRs with
++  label `blocked` or `on-hold`.
++- **gate_compliance**: Required labels = `["ar-approved", "plan-approved", "tests-verified"]`.
++  For each merged PR in last 7d across all repos, check if it has ALL 3 required labels.
++  `budget:delivery` / `budget:rnd` are tracked separately as budget tag presence — they
++  do NOT substitute for required labels and do NOT affect compliance rate.
++  Rate = compliant/total. Track which required labels are most frequently missing.
++- **ratio**: Use issue counts from step 2 commands.
++- **experiments_summary**: Parse from TSV. `keep_rate_pct = kept / (kept + discarded) * 100`.
++- **lcm_signals**: Count by type. For themes, extract top 3 recurring tags or keywords
++  from entry summaries. For blockers, look for entries with tag `blocker` or content
++  containing "blocked".
++- **openclaw_status**: HTTP 200 = healthy. Non-200 or timeout = degraded/unavailable.
++
++---
++
++## Step 6 — Render the 7-Section Report
++
++Output the formatted terminal report verbatim using this template. Substitute all
++placeholders with parsed values. Never skip a section — use the fallback warning for
++unavailable sources.
++
++```
++═══════════════════════════════════════════
++ ORG TELEMETRY DASHBOARD  — <timestamp>
++═══════════════════════════════════════════
++
++## 1. TOKEN BUDGET
++<if budget unavailable>
++⚠️  [BUDGET: unavailable]
++<else>
++Session:  <progress_bar 10 chars>  <session_pct>% used  (resets daily)
++Weekly:   <progress_bar 10 chars>  <weekly_pct>% used   (resets <weekly_reset_date>)
++Sonnet:   <progress_bar 10 chars>  <sonnet_pct>% used
++<if stale>
++⚠️  [WARN: budget.yaml stale >1h — values may be outdated]
++<endif>
++<endif>
++
++## 2. PR HEALTH  (4 repos)
++<if github unavailable>
++⚠️  [GITHUB: unavailable]
++<else>
++ipedro/claudinho:        <open> open  |  <merged_7d> merged (7d)  |  <blocked> blocked
++lossless-claude/lcm:     <open> open  |  <merged_7d> merged (7d)  |  <blocked> blocked
++extreme-go-horse/xgh:    <open> open  |  <merged_7d> merged (7d)  |  <blocked> blocked
++ipedro/autoimprove:      <open> open  |  <merged_7d> merged (7d)  |  <blocked> blocked
++<endif>
++
++## 3. QUALITY GATE COMPLIANCE
++<if gates unavailable>
++⚠️  [GATES: unavailable]
++<else>
++Compliance rate:  <rate_pct>% (<compliant>/<total> recent PRs with all required labels)
++Required labels:  ar-approved, plan-approved, tests-verified
++Missing labels:   <comma-separated list of most common missing labels, or "none">
++<endif>
++
++## 4. WON'T-DO / SHIPPED RATIO
++Won't-do: <wontdo>  |  Shipped: <shipped>  |  Needs Info: <needs_info>  |  Ratio: <wontdo>:<shipped>
++
++## 5. AUTOIMPROVE EXPERIMENTS
++<if experiments unavailable>
++⚠️  [EXPERIMENTS: unavailable]
++<else>
++Kept: <kept>  |  Discarded: <discarded>  |  Keep rate: <keep_rate_pct>%  (last 30d)
++Recent:
++  - <experiment_name_1>  →  <outcome_1>
++  - <experiment_name_2>  →  <outcome_2>
++  - <experiment_name_3>  →  <outcome_3>
++<endif>
++
++## 6. LCM SIGNALS (last 7d)
++<if lcm unavailable>
++⚠️  [LCM: unavailable]
++<else>
++Decisions: <decisions>  |  Signals: <signals>
++Themes:   <theme1>, <theme2>, <theme3>
++Blockers: <recurring blockers if any, or "none">
++<endif>
++
++## 7. OPENCLAW POOL
++<if openclaw unavailable>
++⚠️  [OPENCLAW: unavailable]
++<else>
++Status: <healthy / degraded / unavailable>
++<details if available>
++<endif>
++
++═══════════════════════════════════════════
++```
++
++**Progress bar rendering:** Each bar is 10 chars. Fill `█` for used portion, `░` for
++remaining. Example: 63% → `██████░░░░`. Round to nearest char.
++
++---
++
++## Step 7 — Emit LCM Signal
++
++After rendering, call `mcp__lcm__lcm_store` with:
++
++```json
++{
++  "type": "signal",
++  "summary": "org-dashboard rendered — <N> sources available, <N> unavailable",
++  "tags": ["skill:org-dashboard", "type:dashboard"],
++  "metadata": {
++    "sources_available": <N>,
++    "sources_unavailable": <N>,
++    "gate_compliance_pct": <rate_pct>
++  }
++}
++```
++
++---
++
++## Error Handling Rules
++
++- **Every source is independent.** A failure on one source MUST NOT prevent other
++  sections from rendering.
++- **Never throw or halt** on a JSON parse error — catch, log `⚠️ [SOURCE: parse error]`,
++  continue.
++- **Never use raw Bash** for commands whose output may exceed 20 lines. Always route
++  through `ctx_batch_execute` or `ctx_execute`.
++- **GITHUB_TOKEN missing** → GitHub sections show `⚠️ [GITHUB: unavailable]`, all
++  non-GitHub sections still render normally.
+diff --git a/skills/plan-mode/SKILL.md b/skills/plan-mode/SKILL.md
+index 2bdec2d..6fc76a0 100644
+--- a/skills/plan-mode/SKILL.md
++++ b/skills/plan-mode/SKILL.md
+@@ -2,8 +2,9 @@
+ name: plan-mode
+ description: |
+   Plan-first workflow discipline for teammates — STEP 0 of the canonical workflow.
+-  Instructs the teammate to plan before coding: read issue, run idea-matrix, AR on
+-  options, write plan, submit to orchestrator for autonomous approval, WAIT.
++  Instructs the teammate to plan before coding: read issue, run idea-matrix, spike top
++  options w/ Haiku (parallel worktrees, max 3 rounds), AR on spike evidence, write plan,
++  submit to orchestrator for autonomous approval, WAIT.
+   Reads/searches/Bash for investigation always allowed — discipline is soft
+   (skill-enforced), not a technical lock. The orchestrator approves via Opus AR agent
+   automatically (no Pedro required). Triggers: invoked automatically at teammate spawn,
+@@ -18,6 +19,8 @@ observability:
+     - "plan file written to plans/<slug>.md"
+     - "SendMessage sent to orchestrator with plan location"
+     - "no file edits in ~/Developer/ before approval received"
++    - "spike results (or [SKIP] justification) referenced in plan"
++    - "won't-do: SendMessage to orchestrator with spike failure data before issue close"
+   metrics:
+     - name: duration_ms
+       type: gauge
+@@ -65,22 +68,52 @@ Generates 3×3 options (9 total). Pick top 2–3 candidates.
+ 
+ Skip if trivial (single obvious approach): write `[SKIP_IDEA_MATRIX: <reason>]` in plan.
+ 
+-### 0.3 — AR on top options (background)
++### 0.3 — Spike top options (parallel Haiku, isolated worktrees)
++
++Spawn one Haiku agent per top option — in parallel, each in an isolated worktree:
++
++```
++Agent(
++  description: "Spike: <option name>",
++  model: "haiku",
++  isolation: "worktree",
++  run_in_background: true,
++  prompt: "Implement this option: <option description>. Run tests. Return structured result: { option, success, locs, test_result, failure_reason }."
++)
++```
++
++Collect all results. Evaluate: **any spike satisfactory** (tests pass, approach viable)?
++
++**YES** → proceed to 0.4 — AR reviews actual spike evidence (diffs + test results), not hypotheticals
++
++**NO** → re-run 0.2 (**idea-matrix round N+1**) with all failure data injected as context:
++- What each spike attempted
++- Why each failed (error, test output, complexity blowup)
++- Any partial insights or viable sub-components
++
++Loop until convergence or won't-do. **Maximum 3 rounds** — if no spike passes by round 3, treat as won't-do automatically.
++
++**Exit conditions:**
++1. **Convergence** — a spike passes all gates → proceed to 0.4 with spike evidence
++2. **Won't do** — no viable approach after 3 rounds → write failure data to `plans/<slug>-spike-results.md`, then `SendMessage` to orchestrator with won't-do rationale; WAIT for orchestrator acknowledgment before closing the issue
++
++If trivial (skipped idea-matrix): skip this step too.
++
++### 0.4 — AR on spike evidence (background)
+ 
+ ```
+ Agent(
+-  description: "AR on implementation options",
++  description: "AR on spike evidence",
+   run_in_background: true,
+-  subagent_type: "autoimprove:adversarial-review",
+-  prompt: "Review these implementation options for '<issue title>': <top 2-3 from idea-matrix>. Judge verdict is binding."
++  prompt: "Invoke Skill('autoimprove:adversarial-review', args: 'Review spike results for <issue title> at plans/<slug>-spike-results.md. Winning spike diff and test results are in that file. Judge verdict is binding.')"
+ )
+ ```
+ 
+ Wait for AR result. Judge verdict is BINDING — use the winning option.
+ 
+-If trivial (no idea-matrix run): skip this step.
++If trivial (no spikes run): skip this step.
+ 
+-### 0.4 — Write plan file
++### 0.5 — Write plan file
+ 
+ Write to `plans/<slug>.md` (e.g., `plans/issue-132-plan.md`).
+ 
+@@ -106,7 +139,7 @@ Plan must include:
+ <how to test end-to-end — test command, manual steps>
+ ```
+ 
+-### 0.5 — Submit plan to orchestrator
++### 0.6 — Submit plan to orchestrator
+ 
+ ```
+ SendMessage(
+@@ -116,7 +149,7 @@ SendMessage(
+ )
+ ```
+ 
+-### 0.6 — WAIT for approval
++### 0.7 — WAIT for approval
+ 
+ **Do NOT write any code. Do NOT edit files in `~/Developer/`.**
+ 
+@@ -127,7 +160,7 @@ The orchestrator will:
+ 
+ **If approved** → proceed to `/delegate-implement` skill.
+ 
+-**If rejected** → revise plan based on feedback, repeat from 0.4.
++**If rejected** → revise plan based on feedback, repeat from 0.5.
+ 
+ **Full lifecycle** (for reference):
+ ```
+@@ -136,11 +169,15 @@ STEP 3 agents implement → STEP 4 AR → STEP 5 quality-gate + PR →
+ STEP 6 LCM → STEP 7 merge → STEP 8 introspection → shutdown
+ ```
+ 
+-**If no response after 2 hours** → per UNBREAKABLE_RULES §10:
+-```
+-lcm_store("ESCALATION_TIMEOUT: plan approval for issue #<N> — proceeding with implementation after 2h with no response", tags: ["escalation", "project:<repo>"])
+-```
+-Then proceed to `/delegate-implement`.
++**If no response after 2 hours** — applies ONLY to **plan approval** waits, NOT to won't-do acknowledgment waits:
++
++- **Plan approval wait** → per UNBREAKABLE_RULES §10:
++  ```
++  lcm_store("ESCALATION_TIMEOUT: plan approval for issue #<N> — proceeding with implementation after 2h with no response", tags: ["escalation", "project:<repo>"])
++  ```
++  Then proceed to `/delegate-implement`.
++
++- **Won't-do acknowledgment wait** → no escalation timeout. Won't-do decisions **close the issue**, they do NOT proceed to implementation. If orchestrator is unresponsive, keep waiting — a timeout must never auto-approve impossible work. Log `[WONTDO_PENDING_ACK: issue #<N> — waiting for orchestrator]` to LCM every 2h, but do NOT proceed.
+ 
+ ---
+ 
+@@ -149,7 +186,7 @@ Then proceed to `/delegate-implement`.
+ - [ ] `plans/<slug>.md` exists with all required sections
+ - [ ] `SendMessage` sent to orchestrator with plan location
+ - [ ] No file edits in `~/Developer/` before approval received
+-- [ ] AR result (or skip justification) referenced in plan
++- [ ] Spike results (or skip justification) and AR verdict referenced in plan
+ 
+ ---
+ 
+diff --git a/skills/spawn-teammate/SKILL.md b/skills/spawn-teammate/SKILL.md
+index 4f0ca3a..449f3da 100644
+--- a/skills/spawn-teammate/SKILL.md
++++ b/skills/spawn-teammate/SKILL.md
+@@ -5,7 +5,7 @@ description: |
+   work. NOT a user-facing slash command. Called by factory-mode and triage
+   to create TeamCreate teammates. Triggers: "spawn teammate", "create
+   teammate", "start teammate session".
+-version: 0.1.0
++version: 0.2.0
+ observability:
+   emit: lcm
+   tags:
+@@ -74,7 +74,7 @@ Stay responsive to orchestrator messages at all times — you are never "busy".
+ 
+ **STEP 0 — PLAN**
+ - Invoke Skill("plan-mode")
+-- Read issue + repo context; run idea-matrix (3×3); AR on top options (background)
++- Read issue + repo context; run idea-matrix (3×3); spike top options w/ Haiku (parallel worktrees, max 3 rounds); AR on spike evidence (background); if no spike passes → won't-do: SendMessage orchestrator + await ack before closing
+ - Write plans/<slug>.md with approach, files, acceptance criteria, verification
+ - SendMessage(to: "team-lead") with plan location — WAIT for autonomous approval
+ - Do NOT edit files in ~/Developer/ before approval
+@@ -136,10 +136,15 @@ When you encounter a design decision (more than one valid approach):
+ 2. **IDEA-MATRIX** — invoke `Skill("autoimprove:idea-matrix", args: "<problem statement>")`
+    - Generates 3×3 options (9 total) across angles
+    - Pick the top 2-3 candidates from the matrix output
+-3. **ADVERSARIAL REVIEW** — invoke `Skill("autoimprove:adversarial-review", args: "<top options>")` in background (run_in_background: true)
++3. **SPIKE** — `Agent(model: "haiku", isolation: "worktree", run_in_background: true, ...)` per top option (parallel)
++   - Each agent implements the option, runs tests, returns `{ option, success, locs, test_result, failure_reason }`
++   - Any spike satisfactory? YES → proceed to AR. NO → re-run idea-matrix (round N+1) with failure data
++   - Loop until convergence or won't-do
++4. **ADVERSARIAL REVIEW** — invoke `Skill("autoimprove:adversarial-review", args: "<spike results>")` in background (run_in_background: true)
++   - AR reviews actual spike evidence (diffs + test results), not hypotheticals
+    - Enthusiast → Adversary → Judge (sequential inside the agent)
+    - Judge verdict is BINDING — implement the winning option
+-4. **IMPLEMENT** the Judge's recommendation
++5. **IMPLEMENT** the Judge's recommendation
+ 
+ Trivial decisions (single file, obvious fix, no branching logic) skip steps 1-3. All other decisions MUST go through the full flow. Write `[DESIGN_DECISION: <winner> — Judge verdict at <file>]` in commit body.
+ ```

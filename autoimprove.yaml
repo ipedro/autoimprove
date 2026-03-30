@@ -69,16 +69,53 @@ benchmarks:
         tolerance: 0.0
         significance: 0.01
 
+  - name: ar-effectiveness
+    command: bash benchmark/ar-effectiveness.sh
+    metrics:
+      - name: ar_precision
+        extract: "json:.ar_precision"
+        direction: higher_is_better
+        tolerance: 0.05
+        significance: 0.01
+
+      - name: ar_quality_score
+        extract: "json:.ar_quality_score"
+        direction: higher_is_better
+        tolerance: 1.0
+        significance: 0.05
+
+  - name: matrix-effectiveness
+    command: bash benchmark/matrix-effectiveness.sh
+    metrics:
+      - name: matrix_cell_depth
+        extract: "json:.matrix_cell_depth"
+        direction: higher_is_better
+        tolerance: 5.0
+        significance: 0.01
+
+      - name: matrix_convergence_quality
+        extract: "json:.matrix_convergence_quality"
+        direction: higher_is_better
+        tolerance: 0.0
+        significance: 0.01
+
+      - name: matrix_option_diversity
+        extract: "json:.matrix_option_diversity"
+        direction: higher_is_better
+        tolerance: 0.0
+        significance: 0.01
+
 themes:
   auto:
     strategy: weighted_random
     cooldown_per_theme: 3
     priorities:
       test_coverage: 1
-      skill_quality: 2        # improve SKILL.md descriptions, examples, triggers
+      skill_quality: 3        # improve SKILL.md descriptions, examples, triggers
       agent_prompts: 2        # improve agent instructions for better accuracy
       command_docs: 1         # improve command descriptions and argument hints
       refactoring: 1
+      skill_effectiveness: 3  # measure AR + idea-matrix output quality (not structure)
     focus_paths:
       test_coverage:
         - "test/**"

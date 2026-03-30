@@ -1,0 +1,1874 @@
+diff --git a/.claude-plugin/commands/lcm-doctor.md b/.claude-plugin/commands/lcm-doctor.md
+index 65f4b52..af1feb9 100644
+--- a/.claude-plugin/commands/lcm-doctor.md
++++ b/.claude-plugin/commands/lcm-doctor.md
+@@ -20,4 +20,4 @@ End with one of:
+ - *All checks passed — lossless-claude is healthy.*
+ - *N check(s) need attention — see Fix section above.*
+ 
+-If `lcm_doctor` is unavailable, run `lcm doctor` via Bash and display the output verbatim. If `lcm` is not on PATH, first try to install it by running `node ~/.claude/plugins/cache/*/lossless-claude/*/lcm.mjs install`, then retry `lcm doctor`. If `lcm` is still unavailable, run `node ~/.claude/plugins/cache/*/lossless-claude/*/lcm.mjs doctor` instead.
++If `lcm_doctor` is unavailable, run `lcm doctor` via Bash and display the output verbatim. If `lcm` is not on PATH (marketplace install), first try to install it by running `node "${CLAUDE_PLUGIN_ROOT}/lcm.mjs" install`, then retry `lcm doctor`. If `lcm` is still unavailable, run `node "${CLAUDE_PLUGIN_ROOT}/lcm.mjs" doctor` instead.
+diff --git a/.claude-plugin/commands/lcm-stats.md b/.claude-plugin/commands/lcm-stats.md
+index 1d6f87d..038aa6a 100644
+--- a/.claude-plugin/commands/lcm-stats.md
++++ b/.claude-plugin/commands/lcm-stats.md
+@@ -14,6 +14,6 @@ When invoked, call the `lcm_stats` MCP tool with `{"verbose": true}`.
+ 
+ The tool returns pre-formatted markdown with Memory and Compression tables. Display the output verbatim — it is already formatted correctly.
+ 
+-If `lcm_stats` is unavailable, run `lcm stats -v` via Bash and display the output verbatim. If `lcm` is not on PATH, use `node ~/.claude/plugins/cache/*/lossless-claude/*/lcm.mjs stats -v` instead.
++If `lcm_stats` is unavailable, run `lcm stats -v` via Bash and display the output verbatim. If `lcm` is not on PATH (marketplace install), use `node "${CLAUDE_PLUGIN_ROOT}/lcm.mjs" stats -v` instead.
+ 
+ Do not add commentary — just the stats output.
+diff --git a/bin/lcm.ts b/bin/lcm.ts
+index 27addd8..0b311a3 100644
+--- a/bin/lcm.ts
++++ b/bin/lcm.ts
+@@ -137,6 +137,7 @@ async function main() {
+         const noPromote: boolean = !opts.promote;
+         const minTokens = config.compaction.autoCompactMinTokens;
+         const cwd = all ? undefined : process.cwd();
++        const tokenPath = join(homedir(), ".lossless-claude", "daemon.token");
+ 
+         const { NinjaRenderer } = await import("../src/cli/pipeline-runner.js");
+         const { makeProgressState } = await import("../src/cli/progress-state.js");
+@@ -147,7 +148,7 @@ async function main() {
+         compactRenderer.start();
+ 
+         const { compacted } = await batchCompact({
+-          minTokens, dryRun, port, cwd, replay, verbose,
++          minTokens, dryRun, port, cwd, replay, verbose, tokenPath,
+           onProgress: (patch) => {
+             Object.assign(compactState, patch);
+             if (patch.lastResult) compactRenderer.sessionDone();
+diff --git a/lcm.mjs b/lcm.mjs
+index 527382e..b9f51b6 100644
+--- a/lcm.mjs
++++ b/lcm.mjs
+@@ -20,23 +20,20 @@ if (!existsSync(join(__dirname, "dist"))) {
+   try {
+     execSync("npm run build --silent", { cwd: __dirname, stdio: "pipe", timeout: 120000 });
+     // Register as a global binary so `lcm` is available in PATH.
+-    // Gated behind LCM_BOOTSTRAP_INSTALL=1 (opt-in) to avoid unexpected npm install -g
+-    // side effects in environments where the user manages their own global packages.
+-    if (process.env.LCM_BOOTSTRAP_INSTALL === "1") {
+-      try {
+-        execSync("npm install -g . --silent", { cwd: __dirname, stdio: "pipe", timeout: 60000 });
+-      } catch (error) {
+-        const message =
+-          error instanceof Error && typeof error.message === "string"
+-            ? error.message
+-            : String(error);
+-        console.error(
+-          "[lcm] Warning: Failed to globally install the lcm CLI. " +
+-            "The `lcm` binary may not be available in your PATH. " +
+-            "You can manually run `npm install -g .` in the plugin directory if desired.\n" +
+-            `Underlying error: ${message}`,
+-        );
+-      }
++    // Best-effort: silently skip if the environment disallows global installs (managed npm, etc.).
++    try {
++      execSync("npm install -g . --silent", { cwd: __dirname, stdio: "pipe", timeout: 60000 });
++    } catch (error) {
++      const message =
++        error instanceof Error && typeof error.message === "string"
++          ? error.message
++          : String(error);
++      console.error(
++        "[lcm] Warning: Failed to globally install the lcm CLI. " +
++          "The `lcm` binary may not be available in your PATH. " +
++          "You can manually run `npm install -g .` in the plugin directory if desired.\n" +
++          `Underlying error: ${message}`,
++      );
+     }
+   } catch {}
+ }
+diff --git a/src/batch-compact.ts b/src/batch-compact.ts
+index 17592b2..0ccc403 100644
+--- a/src/batch-compact.ts
++++ b/src/batch-compact.ts
+@@ -4,6 +4,7 @@ import { homedir } from "node:os";
+ import { DatabaseSync } from "node:sqlite";
+ import { runLcmMigrations } from "./db/migration.js";
+ import type { ProgressState } from "./cli/progress-state.js";
++import { DaemonClient } from "./daemon/client.js";
+ 
+ export interface UncompactedConversation {
+   projectDir: string;
+@@ -88,6 +89,7 @@ export async function batchCompact(opts: {
+   cwd?: string;
+   replay?: boolean;
+   verbose?: boolean;
++  tokenPath?: string;
+   /** Called with state patches as each session is processed — used by the ninja renderer */
+   onProgress?: (patch: Partial<ProgressState>) => void;
+ }): Promise<{ compacted: number }> {
+@@ -111,6 +113,7 @@ export async function batchCompact(opts: {
+   let tokensIn = 0;
+   let tokensOut = 0;
+   const progressErrors: { sessionId: string; message: string }[] = [];
++  const client = new DaemonClient(`http://127.0.0.1:${opts.port}`, opts.tokenPath);
+ 
+   for (const conv of conversations) {
+     const label = `${conv.cwd} conv #${conv.conversationId} (${conv.messages} msgs, ${(conv.tokens / 1000).toFixed(1)}k tokens)`;
+@@ -126,69 +129,51 @@ export async function batchCompact(opts: {
+     onProgress?.({ current: { sessionId: conv.sessionId, messages: conv.messages, tokens: conv.tokens, startedAt: sessionStart } });
+     process.stdout.write(`  compacting: ${label}...`);
+     try {
+-      const res = await fetch(`http://127.0.0.1:${opts.port}/compact`, {
+-        method: "POST",
+-        headers: { "Content-Type": "application/json" },
+-        body: JSON.stringify({
+-          session_id: conv.sessionId,
+-          cwd: conv.cwd,
+-          skip_ingest: true,
+-          client: "claude",
+-        }),
++      const data = await client.post<{ summary?: string; skipped?: boolean; tokensBefore?: number; tokensAfter?: number; providerLabel?: string }>("/compact", {
++        session_id: conv.sessionId,
++        cwd: conv.cwd,
++        skip_ingest: true,
++        client: "claude",
+       });
+ 
+       doneCount++;
+-      if (!res.ok) {
+-        const body = await res.text().catch(() => "");
+-        const errMsg = `HTTP ${res.status}${body ? `: ${body}` : ""}`;
+-        console.log(` FAILED (${errMsg})`);
+-        progressErrors.push({ sessionId: conv.sessionId, message: errMsg });
++      if (data.skipped) {
++        console.log(" skipped (already in progress)");
+         onProgress?.({
+           completed: doneCount,
+           current: undefined,
+-          errors: progressErrors,
+           lastResult: { sessionId: conv.sessionId, messages: conv.messages, tokensBefore: conv.tokens, elapsed: Date.now() - sessionStart },
+         });
+       } else {
+-        const data = await res.json() as { summary?: string; skipped?: boolean; tokensBefore?: number; tokensAfter?: number; providerLabel?: string };
+-        if (data.skipped) {
+-          console.log(" skipped (already in progress)");
+-          onProgress?.({
+-            completed: doneCount,
+-            current: undefined,
+-            lastResult: { sessionId: conv.sessionId, messages: conv.messages, tokensBefore: conv.tokens, elapsed: Date.now() - sessionStart },
+-          });
++        const before = typeof data.tokensBefore === "number" ? data.tokensBefore : 0;
++        const after = typeof data.tokensAfter === "number" ? data.tokensAfter : 0;
++        tokensIn += before;
++        tokensOut += after;
++        if (opts.verbose && before > 0) {
++          const pct = before > 0 ? Math.round((1 - after / before) * 100) : 0;
++          console.log(` done  (${(before / 1000).toFixed(1)}k → ${(after / 1000).toFixed(1)}k tokens, ${pct}% reduction)`);
+         } else {
+-          const before = typeof data.tokensBefore === "number" ? data.tokensBefore : 0;
+-          const after = typeof data.tokensAfter === "number" ? data.tokensAfter : 0;
+-          tokensIn += before;
+-          tokensOut += after;
+-          if (opts.verbose && before > 0) {
+-            const pct = before > 0 ? Math.round((1 - after / before) * 100) : 0;
+-            console.log(` done  (${(before / 1000).toFixed(1)}k → ${(after / 1000).toFixed(1)}k tokens, ${pct}% reduction)`);
+-          } else {
+-            console.log(" done");
+-          }
+-          compacted++;
+-          messagesIn += conv.messages;
+-          tokensIn += data.tokensBefore ?? conv.tokens;
+-          tokensOut += data.tokensAfter ?? 0;
+-          onProgress?.({
+-            completed: doneCount,
+-            messagesIn,
+-            tokensIn,
+-            tokensOut,
+-            current: undefined,
+-            lastResult: {
+-              sessionId: conv.sessionId,
+-              messages: conv.messages,
+-              tokensBefore: data.tokensBefore ?? conv.tokens,
+-              tokensAfter: data.tokensAfter,
+-              provider: data.providerLabel,
+-              elapsed: Date.now() - sessionStart,
+-            },
+-          });
++          console.log(" done");
+         }
++        compacted++;
++        messagesIn += conv.messages;
++        tokensIn += data.tokensBefore ?? conv.tokens;
++        tokensOut += data.tokensAfter ?? 0;
++        onProgress?.({
++          completed: doneCount,
++          messagesIn,
++          tokensIn,
++          tokensOut,
++          current: undefined,
++          lastResult: {
++            sessionId: conv.sessionId,
++            messages: conv.messages,
++            tokensBefore: data.tokensBefore ?? conv.tokens,
++            tokensAfter: data.tokensAfter,
++            provider: data.providerLabel,
++            elapsed: Date.now() - sessionStart,
++          },
++        });
+       }
+     } catch (err) {
+       doneCount++;
+diff --git a/src/doctor/doctor.ts b/src/doctor/doctor.ts
+index ec01740..d7812ba 100644
+--- a/src/doctor/doctor.ts
++++ b/src/doctor/doctor.ts
+@@ -133,7 +133,7 @@ function checkPassiveLearning(results: CheckResult[], hooksInstalled: boolean, v
+ 
+   // Capture check
+   if (stats.captured === 0) {
+-    results.push({ name: "events-capture", category: "Passive Learning", status: "warn", message: "No events captured — passive learning may not be active" });
++    results.push({ name: "events-capture", category: "Passive Learning", status: "warn", message: "No events captured — passive learning may not be active\n     Fix: run 'lcm install' to re-register hooks, then use a Bash or Edit tool to trigger the first event capture; re-run /lcm-doctor to verify" });
+   } else if (stats.unprocessed > 1000) {
+     results.push({ name: "events-capture", category: "Passive Learning", status: "warn", message: `${stats.captured} events (${stats.unprocessed} unprocessed) — daemon may be offline — run: lcm daemon start` });
+   } else {
+diff --git a/test/db/connection-extended.test.ts b/test/db/connection-extended.test.ts
+new file mode 100644
+index 0000000..57490e6
+--- /dev/null
++++ b/test/db/connection-extended.test.ts
+@@ -0,0 +1,62 @@
++/**
++ * Extended connection pool tests covering the untested `isLcmConnectionOpen` export.
++ */
++
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterEach, describe, it, expect } from "vitest";
++import {
++  getLcmConnection,
++  closeLcmConnection,
++  isLcmConnectionOpen,
++} from "../../src/db/connection.js";
++
++const tempDirs: string[] = [];
++
++afterEach(() => {
++  closeLcmConnection();
++  for (const dir of tempDirs.splice(0)) {
++    rmSync(dir, { recursive: true, force: true });
++  }
++});
++
++describe("isLcmConnectionOpen", () => {
++  it("returns false when no connection has been opened for the path", () => {
++    const fakePath = "/tmp/this/path/was/never/opened.sqlite";
++    expect(isLcmConnectionOpen(fakePath)).toBe(false);
++  });
++
++  it("returns true after a connection is opened", () => {
++    const tempDir = mkdtempSync(join(tmpdir(), "lcm-conn-open-test-"));
++    tempDirs.push(tempDir);
++    const dbPath = join(tempDir, "test.sqlite");
++
++    getLcmConnection(dbPath);
++
++    expect(isLcmConnectionOpen(dbPath)).toBe(true);
++  });
++
++  it("returns false after the connection is fully closed (refs reach 0)", () => {
++    const tempDir = mkdtempSync(join(tmpdir(), "lcm-conn-open-test-"));
++    tempDirs.push(tempDir);
++    const dbPath = join(tempDir, "test.sqlite");
++
++    getLcmConnection(dbPath); // open once, refs = 1
++    closeLcmConnection(dbPath); // close once, refs = 0 → removed
++
++    expect(isLcmConnectionOpen(dbPath)).toBe(false);
++  });
++
++  it("remains open while refs > 0 after partial close", () => {
++    const tempDir = mkdtempSync(join(tmpdir(), "lcm-conn-open-test-"));
++    tempDirs.push(tempDir);
++    const dbPath = join(tempDir, "test.sqlite");
++
++    getLcmConnection(dbPath); // refs = 1
++    getLcmConnection(dbPath); // refs = 2
++    closeLcmConnection(dbPath); // refs = 1 — still open
++
++    expect(isLcmConnectionOpen(dbPath)).toBe(true);
++  });
++});
+diff --git a/test/db/features-and-redaction.test.ts b/test/db/features-and-redaction.test.ts
+new file mode 100644
+index 0000000..9274530
+--- /dev/null
++++ b/test/db/features-and-redaction.test.ts
+@@ -0,0 +1,143 @@
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterEach, describe, expect, it } from "vitest";
++import { DatabaseSync } from "node:sqlite";
++import { getLcmConnection, closeLcmConnection } from "../../src/db/connection.js";
++import { runLcmMigrations } from "../../src/db/migration.js";
++import { getLcmDbFeatures } from "../../src/db/features.js";
++import { upsertRedactionCounts } from "../../src/db/redaction-stats.js";
++
++const tempDirs: string[] = [];
++
++afterEach(() => {
++  closeLcmConnection();
++  for (const dir of tempDirs.splice(0)) {
++    rmSync(dir, { recursive: true, force: true });
++  }
++});
++
++function makeDb(): DatabaseSync {
++  const tempDir = mkdtempSync(join(tmpdir(), "lcm-features-test-"));
++  tempDirs.push(tempDir);
++  const dbPath = join(tempDir, "test.db");
++  const db = getLcmConnection(dbPath);
++  runLcmMigrations(db);
++  return db;
++}
++
++// ---------------------------------------------------------------------------
++// getLcmDbFeatures
++// ---------------------------------------------------------------------------
++
++describe("getLcmDbFeatures", () => {
++  it("returns a features object with fts5Available boolean", () => {
++    const db = makeDb();
++    const features = getLcmDbFeatures(db);
++    expect(typeof features.fts5Available).toBe("boolean");
++  });
++
++  it("returns the same cached object on repeated calls", () => {
++    const db = makeDb();
++    const first = getLcmDbFeatures(db);
++    const second = getLcmDbFeatures(db);
++    expect(first).toBe(second);
++  });
++
++  it("returns independent results for different db handles", () => {
++    const db1 = makeDb();
++    const db2 = makeDb();
++    const features1 = getLcmDbFeatures(db1);
++    const features2 = getLcmDbFeatures(db2);
++    // Each handle gets its own cache entry
++    expect(features1).not.toBe(features2);
++    // But both should agree on fts5 availability
++    expect(features1.fts5Available).toBe(features2.fts5Available);
++  });
++
++  it("fts5 probe does not leave a persistent table behind", () => {
++    const db = makeDb();
++    getLcmDbFeatures(db);
++    // The probe creates/drops a temp table; check it left no permanent tables behind
++    const rows = db.prepare(
++      "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%fts5%probe%'"
++    ).all() as { name: string }[];
++    expect(rows).toHaveLength(0);
++  });
++});
++
++// ---------------------------------------------------------------------------
++// upsertRedactionCounts
++// ---------------------------------------------------------------------------
++
++describe("upsertRedactionCounts", () => {
++  it("is a no-op when all counts are zero", () => {
++    const db = makeDb();
++    // Should not throw and should not insert anything
++    upsertRedactionCounts(db, "proj-1", { gitleaks: 0, builtIn: 0, global: 0, project: 0 });
++    const rows = db.prepare(
++      "SELECT * FROM redaction_stats WHERE project_id = 'proj-1'"
++    ).all();
++    expect(rows).toHaveLength(0);
++  });
++
++  it("inserts a row for each non-zero category", () => {
++    const db = makeDb();
++    upsertRedactionCounts(db, "proj-2", { gitleaks: 3, builtIn: 1, global: 0, project: 0 });
++    const rows = db.prepare(
++      "SELECT category, count FROM redaction_stats WHERE project_id = 'proj-2' ORDER BY category"
++    ).all() as { category: string; count: number }[];
++    expect(rows).toHaveLength(2);
++    const byCategory = Object.fromEntries(rows.map((r) => [r.category, r.count]));
++    expect(byCategory["gitleaks"]).toBe(3);
++    expect(byCategory["built_in"]).toBe(1);
++  });
++
++  it("accumulates counts on repeated upserts (additive)", () => {
++    const db = makeDb();
++    upsertRedactionCounts(db, "proj-3", { gitleaks: 0, builtIn: 5, global: 0, project: 0 });
++    upsertRedactionCounts(db, "proj-3", { gitleaks: 0, builtIn: 3, global: 0, project: 0 });
++    const row = db.prepare(
++      "SELECT count FROM redaction_stats WHERE project_id = 'proj-3' AND category = 'built_in'"
++    ).get() as { count: number } | undefined;
++    expect(row?.count).toBe(8);
++  });
++
++  it("handles all four categories in one call", () => {
++    const db = makeDb();
++    upsertRedactionCounts(db, "proj-4", { gitleaks: 10, builtIn: 2, global: 4, project: 7 });
++    const rows = db.prepare(
++      "SELECT category, count FROM redaction_stats WHERE project_id = 'proj-4' ORDER BY category"
++    ).all() as { category: string; count: number }[];
++    expect(rows).toHaveLength(4);
++    const byCategory = Object.fromEntries(rows.map((r) => [r.category, r.count]));
++    expect(byCategory["gitleaks"]).toBe(10);
++    expect(byCategory["built_in"]).toBe(2);
++    expect(byCategory["global"]).toBe(4);
++    expect(byCategory["project"]).toBe(7);
++  });
++
++  it("keeps counts isolated per project_id", () => {
++    const db = makeDb();
++    upsertRedactionCounts(db, "proj-A", { gitleaks: 5, builtIn: 0, global: 0, project: 0 });
++    upsertRedactionCounts(db, "proj-B", { gitleaks: 9, builtIn: 0, global: 0, project: 0 });
++    const rowA = db.prepare(
++      "SELECT count FROM redaction_stats WHERE project_id = 'proj-A' AND category = 'gitleaks'"
++    ).get() as { count: number } | undefined;
++    const rowB = db.prepare(
++      "SELECT count FROM redaction_stats WHERE project_id = 'proj-B' AND category = 'gitleaks'"
++    ).get() as { count: number } | undefined;
++    expect(rowA?.count).toBe(5);
++    expect(rowB?.count).toBe(9);
++  });
++
++  it("only inserts the global category when only global is non-zero", () => {
++    const db = makeDb();
++    upsertRedactionCounts(db, "proj-5", { gitleaks: 0, builtIn: 0, global: 2, project: 0 });
++    const rows = db.prepare(
++      "SELECT category FROM redaction_stats WHERE project_id = 'proj-5'"
++    ).all() as { category: string }[];
++    expect(rows).toHaveLength(1);
++    expect(rows[0].category).toBe("global");
++  });
++});
+diff --git a/test/db/promoted-extended.test.ts b/test/db/promoted-extended.test.ts
+new file mode 100644
+index 0000000..448faae
+--- /dev/null
++++ b/test/db/promoted-extended.test.ts
+@@ -0,0 +1,249 @@
++/**
++ * Extended PromotedStore tests covering untested methods and edge cases:
++ *   - getById returning null for unknown id
++ *   - getAll with no options, projectId filter, since filter, tags filter
++ *   - listContentPrefixes
++ *   - update tags-only path (no content change)
++ *   - update confidence-only path
++ *   - search filtered by projectId
++ *   - search with empty/punctuation-only query
++ *   - transaction commit and rollback
++ *   - update on non-existent id is a no-op
++ *   - deleteById on non-existent id is safe
++ */
++
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterEach, describe, expect, it } from "vitest";
++import { getLcmConnection, closeLcmConnection } from "../../src/db/connection.js";
++import { runLcmMigrations } from "../../src/db/migration.js";
++import { PromotedStore } from "../../src/db/promoted.js";
++
++const tempDirs: string[] = [];
++
++afterEach(() => {
++  closeLcmConnection();
++  for (const dir of tempDirs.splice(0)) {
++    rmSync(dir, { recursive: true, force: true });
++  }
++});
++
++function makeDb() {
++  const tempDir = mkdtempSync(join(tmpdir(), "lcm-promoted-ext-"));
++  tempDirs.push(tempDir);
++  const dbPath = join(tempDir, "test.db");
++  const db = getLcmConnection(dbPath);
++  runLcmMigrations(db);
++  return db;
++}
++
++describe("PromotedStore extended", () => {
++  // ── getById ──────────────────────────────────────────────────────────────
++
++  it("getById returns null for a non-existent id", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++    expect(store.getById("non-existent-uuid")).toBeNull();
++  });
++
++  // ── getAll ───────────────────────────────────────────────────────────────
++
++  it("getAll returns all non-archived rows when called without options", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    store.insert({ content: "Alpha memory", tags: ["t1"], projectId: "proj-a" });
++    store.insert({ content: "Beta memory", tags: ["t2"], projectId: "proj-b" });
++    const archivedId = store.insert({ content: "Archived memory", tags: [], projectId: "proj-a" });
++    store.archive(archivedId);
++
++    const rows = store.getAll();
++    expect(rows).toHaveLength(2);
++    expect(rows.map((r) => r.content)).toContain("Alpha memory");
++    expect(rows.map((r) => r.content)).toContain("Beta memory");
++    // Archived row must not appear
++    expect(rows.map((r) => r.content)).not.toContain("Archived memory");
++  });
++
++  it("getAll with projectId filter returns only that project's rows", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    store.insert({ content: "Project A memory", tags: [], projectId: "proj-a" });
++    store.insert({ content: "Project B memory", tags: [], projectId: "proj-b" });
++
++    const rows = store.getAll({ projectId: "proj-a" });
++    expect(rows).toHaveLength(1);
++    expect(rows[0].content).toBe("Project A memory");
++  });
++
++  it("getAll with since filter returns only rows created after the threshold", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    // Insert a row with an explicit early timestamp by using raw SQL
++    db.prepare(
++      "INSERT INTO promoted (id, content, tags, project_id, confidence, depth, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
++    ).run("old-id", "Old memory", "[]", "proj-x", 1.0, 0, "2024-01-01T00:00:00.000Z");
++
++    store.insert({ content: "New memory", tags: [], projectId: "proj-x" });
++
++    const rows = store.getAll({ since: "2025-01-01T00:00:00.000Z" });
++    expect(rows.map((r) => r.content)).not.toContain("Old memory");
++    expect(rows.map((r) => r.content)).toContain("New memory");
++  });
++
++  it("getAll with tags filter returns only rows matching all specified tags", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    store.insert({ content: "Has both tags", tags: ["alpha", "beta"], projectId: "p1" });
++    store.insert({ content: "Only alpha", tags: ["alpha"], projectId: "p1" });
++    store.insert({ content: "Only beta", tags: ["beta"], projectId: "p1" });
++
++    const rows = store.getAll({ tags: ["alpha", "beta"] });
++    expect(rows).toHaveLength(1);
++    expect(rows[0].content).toBe("Has both tags");
++  });
++
++  // ── listContentPrefixes ──────────────────────────────────────────────────
++
++  it("listContentPrefixes returns content strings up to the specified limit", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    store.insert({ content: "First insight", tags: [], projectId: "p1" });
++    store.insert({ content: "Second insight", tags: [], projectId: "p1" });
++    store.insert({ content: "Third insight", tags: [], projectId: "p1" });
++
++    const prefixes = store.listContentPrefixes(2);
++    expect(prefixes).toHaveLength(2);
++    // All returned values must be from the inserted contents
++    for (const prefix of prefixes) {
++      expect(["First insight", "Second insight", "Third insight"]).toContain(prefix);
++    }
++  });
++
++  it("listContentPrefixes returns empty array when table is empty", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++    expect(store.listContentPrefixes(10)).toEqual([]);
++  });
++
++  it("listContentPrefixes excludes archived rows", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    const id = store.insert({ content: "Will be archived", tags: [], projectId: "p1" });
++    store.archive(id);
++
++    const prefixes = store.listContentPrefixes(10);
++    expect(prefixes).not.toContain("Will be archived");
++  });
++
++  // ── update ───────────────────────────────────────────────────────────────
++
++  it("update tags-only: changes tags without altering content", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++    const id = store.insert({ content: "Tag test content", tags: ["old-tag"], projectId: "p1" });
++
++    store.update(id, { tags: ["new-tag-a", "new-tag-b"] });
++
++    const row = store.getById(id);
++    expect(row).not.toBeNull();
++    expect(row!.content).toBe("Tag test content");
++    const tags = JSON.parse(row!.tags) as string[];
++    expect(tags).toContain("new-tag-a");
++    expect(tags).toContain("new-tag-b");
++    expect(tags).not.toContain("old-tag");
++  });
++
++  it("update confidence-only: changes confidence without altering content or tags", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++    const id = store.insert({ content: "Confidence test", tags: ["keep"], projectId: "p1", confidence: 0.5 });
++
++    store.update(id, { confidence: 0.95 });
++
++    const row = store.getById(id);
++    expect(row).not.toBeNull();
++    expect(row!.confidence).toBe(0.95);
++    expect(row!.content).toBe("Confidence test");
++    expect(JSON.parse(row!.tags)).toContain("keep");
++  });
++
++  it("update on non-existent id is a no-op and does not throw", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++    expect(() => store.update("ghost-id", { content: "x", confidence: 1.0 })).not.toThrow();
++  });
++
++  // ── search with projectId ────────────────────────────────────────────────
++
++  it("search with projectId only returns results from that project", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    store.insert({ content: "React is great for project A", tags: [], projectId: "proj-a" });
++    store.insert({ content: "React is used in project B", tags: [], projectId: "proj-b" });
++
++    const results = store.search("React", 10, undefined, "proj-a");
++    expect(results).toHaveLength(1);
++    expect(results[0].content).toContain("project A");
++    expect(results[0].projectId).toBe("proj-a");
++  });
++
++  it("search returns empty array when query consists only of punctuation/symbols", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    store.insert({ content: "Some content here", tags: [], projectId: "p1" });
++
++    // All non-word characters get stripped — sanitized becomes empty
++    const results = store.search("!!! ---", 10);
++    expect(results).toEqual([]);
++  });
++
++  // ── transaction ──────────────────────────────────────────────────────────
++
++  it("transaction commits all operations when the callback succeeds", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    let id1: string;
++    let id2: string;
++
++    store.transaction(() => {
++      id1 = store.insert({ content: "Tx memory 1", tags: [], projectId: "p1" });
++      id2 = store.insert({ content: "Tx memory 2", tags: [], projectId: "p1" });
++    });
++
++    expect(store.getById(id1!)).not.toBeNull();
++    expect(store.getById(id2!)).not.toBeNull();
++  });
++
++  it("transaction rolls back all operations when the callback throws", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++
++    expect(() => {
++      store.transaction(() => {
++        store.insert({ content: "Should be rolled back", tags: [], projectId: "p1" });
++        throw new Error("deliberate failure");
++      });
++    }).toThrow("deliberate failure");
++
++    const rows = store.getAll();
++    expect(rows.map((r) => r.content)).not.toContain("Should be rolled back");
++  });
++
++  // ── deleteById ───────────────────────────────────────────────────────────
++
++  it("deleteById on a non-existent id does not throw", () => {
++    const db = makeDb();
++    const store = new PromotedStore(db);
++    expect(() => store.deleteById("does-not-exist")).not.toThrow();
++  });
++});
+diff --git a/test/stats.test.ts b/test/stats.test.ts
+index 026bf12..5822a12 100644
+--- a/test/stats.test.ts
++++ b/test/stats.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, it, expect, vi, afterEach } from "vitest";
+-import { formatNumber, printStats } from "../src/stats.js";
++import { formatNumber, formatRatio, printStats } from "../src/stats.js";
+ 
+ describe("formatNumber", () => {
+   it("returns plain digits for numbers below 1000", () => {
+@@ -25,6 +25,31 @@ describe("formatNumber", () => {
+   });
+ });
+ 
++describe("formatRatio", () => {
++  it("returns the ratio formatted to one decimal place", () => {
++    expect(formatRatio(10_000, 1_000)).toBe("10.0");
++    expect(formatRatio(3_000, 1_000)).toBe("3.0");
++    expect(formatRatio(7_500, 2_500)).toBe("3.0");
++  });
++
++  it("returns en-dash when before is zero", () => {
++    expect(formatRatio(0, 1_000)).toBe("\u2013");
++  });
++
++  it("returns en-dash when after is zero", () => {
++    expect(formatRatio(1_000, 0)).toBe("\u2013");
++  });
++
++  it("returns en-dash when both before and after are zero", () => {
++    expect(formatRatio(0, 0)).toBe("\u2013");
++  });
++
++  it("handles fractional ratios correctly", () => {
++    // 1500 / 1000 = 1.5
++    expect(formatRatio(1_500, 1_000)).toBe("1.5");
++  });
++});
++
+ describe("printStats", () => {
+   afterEach(() => { vi.restoreAllMocks(); });
+ 
+@@ -135,4 +160,27 @@ describe("printStats", () => {
+     expect(out).toContain("global: 2");
+     expect(out).toContain("project: 1");
+   });
++
++  it("shows Events row in Memory section when eventsCaptured > 0", () => {
++    const out = captureLog(() => printStats({
++      ...baseStats,
++      eventsCaptured: 42,
++      eventsUnprocessed: 3,
++      eventsErrors: 1,
++    }, false));
++    expect(out).toContain("Events");
++    expect(out).toContain("42");
++    expect(out).toContain("3 unprocessed");
++    expect(out).toContain("1 errors");
++  });
++
++  it("omits Events row when eventsCaptured is 0", () => {
++    const out = captureLog(() => printStats({
++      ...baseStats,
++      eventsCaptured: 0,
++      eventsUnprocessed: 0,
++      eventsErrors: 0,
++    }, false));
++    expect(out).not.toContain("Events");
++  });
+ });
+diff --git a/test/store/conversation-store.test.ts b/test/store/conversation-store.test.ts
+new file mode 100644
+index 0000000..6c93ed7
+--- /dev/null
++++ b/test/store/conversation-store.test.ts
+@@ -0,0 +1,385 @@
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterEach, beforeEach, describe, expect, it } from "vitest";
++import type { DatabaseSync } from "node:sqlite";
++import { getLcmConnection, closeLcmConnection } from "../../src/db/connection.js";
++import { runLcmMigrations } from "../../src/db/migration.js";
++import { ConversationStore } from "../../src/store/conversation-store.js";
++
++const tempDirs: string[] = [];
++
++afterEach(() => {
++  closeLcmConnection();
++  for (const dir of tempDirs.splice(0)) {
++    rmSync(dir, { recursive: true, force: true });
++  }
++});
++
++function makeDb(): DatabaseSync {
++  const tempDir = mkdtempSync(join(tmpdir(), "lcm-conv-store-test-"));
++  tempDirs.push(tempDir);
++  const db = getLcmConnection(join(tempDir, "test.db"));
++  runLcmMigrations(db);
++  return db;
++}
++
++function makeStore(db: DatabaseSync): ConversationStore {
++  return new ConversationStore(db, { fts5Available: false });
++}
++
++// ── Conversation CRUD ─────────────────────────────────────────────────────────
++
++describe("ConversationStore — conversation CRUD", () => {
++  it("createConversation returns a record with correct fields", async () => {
++    const store = makeStore(makeDb());
++    const rec = await store.createConversation({ sessionId: "sess-1", title: "My Session" });
++    expect(rec.sessionId).toBe("sess-1");
++    expect(rec.title).toBe("My Session");
++    expect(rec.conversationId).toBeGreaterThan(0);
++    expect(rec.bootstrappedAt).toBeNull();
++    expect(rec.createdAt).toBeInstanceOf(Date);
++  });
++
++  it("createConversation stores null title when not provided", async () => {
++    const store = makeStore(makeDb());
++    const rec = await store.createConversation({ sessionId: "sess-notitle" });
++    expect(rec.title).toBeNull();
++  });
++
++  it("getConversation returns null for unknown id", async () => {
++    const store = makeStore(makeDb());
++    expect(await store.getConversation(9999)).toBeNull();
++  });
++
++  it("getConversationBySessionId returns a conversation for the sessionId when multiple exist", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    await store.createConversation({ sessionId: "shared-sess" });
++    await store.createConversation({ sessionId: "shared-sess", title: "newer" });
++    const result = await store.getConversationBySessionId("shared-sess");
++    // Should return one of the conversations for the session (most-recent by created_at)
++    expect(result).not.toBeNull();
++    expect(result?.sessionId).toBe("shared-sess");
++  });
++
++  it("getConversationBySessionId returns null for unknown sessionId", async () => {
++    const store = makeStore(makeDb());
++    expect(await store.getConversationBySessionId("no-such-session")).toBeNull();
++  });
++
++  it("getOrCreateConversation is idempotent for same sessionId", async () => {
++    const store = makeStore(makeDb());
++    const first = await store.getOrCreateConversation("idem-sess");
++    const second = await store.getOrCreateConversation("idem-sess");
++    expect(first.conversationId).toBe(second.conversationId);
++  });
++
++  it("markConversationBootstrapped sets bootstrappedAt only once (COALESCE)", async () => {
++    const store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "boot-sess" });
++    await store.markConversationBootstrapped(conv.conversationId);
++    const after1 = await store.getConversation(conv.conversationId);
++    expect(after1?.bootstrappedAt).toBeInstanceOf(Date);
++
++    await store.markConversationBootstrapped(conv.conversationId);
++    const after2 = await store.getConversation(conv.conversationId);
++    // bootstrappedAt should remain unchanged (COALESCE prevents overwrite)
++    expect(after2?.bootstrappedAt?.getTime()).toBe(after1?.bootstrappedAt?.getTime());
++  });
++
++  it("listConversations returns all conversations in order", async () => {
++    const store = makeStore(makeDb());
++    await store.createConversation({ sessionId: "list-1" });
++    await store.createConversation({ sessionId: "list-2" });
++    const list = await store.listConversations();
++    expect(list.length).toBeGreaterThanOrEqual(2);
++  });
++});
++
++// ── Message operations ────────────────────────────────────────────────────────
++
++describe("ConversationStore — message operations", () => {
++  let store: ConversationStore;
++  let conversationId: number;
++
++  beforeEach(async () => {
++    store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "msg-sess" });
++    conversationId = conv.conversationId;
++  });
++
++  it("createMessage returns correct record", async () => {
++    const msg = await store.createMessage({
++      conversationId,
++      seq: 1,
++      role: "user",
++      content: "hello world",
++      tokenCount: 2,
++    });
++    expect(msg.role).toBe("user");
++    expect(msg.content).toBe("hello world");
++    expect(msg.tokenCount).toBe(2);
++    expect(msg.seq).toBe(1);
++  });
++
++  it("getMessages returns messages in seq order", async () => {
++    await store.createMessage({ conversationId, seq: 1, role: "user", content: "a", tokenCount: 1 });
++    await store.createMessage({ conversationId, seq: 2, role: "assistant", content: "b", tokenCount: 1 });
++    const msgs = await store.getMessages(conversationId);
++    expect(msgs.map((m) => m.seq)).toEqual([1, 2]);
++  });
++
++  it("getMessages with afterSeq filters correctly", async () => {
++    await store.createMessage({ conversationId, seq: 1, role: "user", content: "a", tokenCount: 1 });
++    await store.createMessage({ conversationId, seq: 2, role: "user", content: "b", tokenCount: 1 });
++    await store.createMessage({ conversationId, seq: 3, role: "user", content: "c", tokenCount: 1 });
++    const msgs = await store.getMessages(conversationId, { afterSeq: 1 });
++    expect(msgs.map((m) => m.seq)).toEqual([2, 3]);
++  });
++
++  it("getMessages with limit restricts results", async () => {
++    for (let i = 1; i <= 5; i++) {
++      await store.createMessage({ conversationId, seq: i, role: "user", content: `msg${i}`, tokenCount: 1 });
++    }
++    const msgs = await store.getMessages(conversationId, { limit: 3 });
++    expect(msgs).toHaveLength(3);
++  });
++
++  it("getLastMessage returns null for empty conversation", async () => {
++    expect(await store.getLastMessage(conversationId)).toBeNull();
++  });
++
++  it("getLastMessage returns the highest-seq message", async () => {
++    await store.createMessage({ conversationId, seq: 1, role: "user", content: "first", tokenCount: 1 });
++    await store.createMessage({ conversationId, seq: 2, role: "assistant", content: "last", tokenCount: 1 });
++    const last = await store.getLastMessage(conversationId);
++    expect(last?.seq).toBe(2);
++    expect(last?.content).toBe("last");
++  });
++
++  it("getMaxSeq returns 0 when no messages exist", async () => {
++    expect(await store.getMaxSeq(conversationId)).toBe(0);
++  });
++
++  it("getMaxSeq returns the highest seq", async () => {
++    await store.createMessage({ conversationId, seq: 5, role: "user", content: "x", tokenCount: 1 });
++    await store.createMessage({ conversationId, seq: 3, role: "user", content: "y", tokenCount: 1 });
++    expect(await store.getMaxSeq(conversationId)).toBe(5);
++  });
++
++  it("hasMessage returns false when message absent", async () => {
++    expect(await store.hasMessage(conversationId, "user", "no such message")).toBe(false);
++  });
++
++  it("hasMessage returns true when message present", async () => {
++    await store.createMessage({ conversationId, seq: 1, role: "user", content: "exact text", tokenCount: 1 });
++    expect(await store.hasMessage(conversationId, "user", "exact text")).toBe(true);
++  });
++
++  it("countMessagesByIdentity counts exact duplicates", async () => {
++    await store.createMessage({ conversationId, seq: 1, role: "user", content: "dup", tokenCount: 1 });
++    await store.createMessage({ conversationId, seq: 2, role: "user", content: "dup", tokenCount: 1 });
++    expect(await store.countMessagesByIdentity(conversationId, "user", "dup")).toBe(2);
++  });
++
++  it("getMessageById returns null for unknown id", async () => {
++    expect(await store.getMessageById(99999)).toBeNull();
++  });
++
++  it("getMessageCount returns correct count", async () => {
++    await store.createMessage({ conversationId, seq: 1, role: "user", content: "x", tokenCount: 1 });
++    await store.createMessage({ conversationId, seq: 2, role: "user", content: "y", tokenCount: 1 });
++    expect(await store.getMessageCount(conversationId)).toBe(2);
++  });
++
++  it("createMessagesBulk inserts all messages and returns records", async () => {
++    const records = await store.createMessagesBulk([
++      { conversationId, seq: 10, role: "user", content: "bulk1", tokenCount: 1 },
++      { conversationId, seq: 11, role: "assistant", content: "bulk2", tokenCount: 1 },
++    ]);
++    expect(records).toHaveLength(2);
++    expect(records[0].content).toBe("bulk1");
++    expect(records[1].content).toBe("bulk2");
++  });
++
++  it("createMessagesBulk with empty array returns empty array", async () => {
++    const records = await store.createMessagesBulk([]);
++    expect(records).toEqual([]);
++  });
++});
++
++// ── Message parts ─────────────────────────────────────────────────────────────
++
++describe("ConversationStore — message parts", () => {
++  it("createMessageParts and getMessageParts round-trip", async () => {
++    const store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "parts-sess" });
++    const msg = await store.createMessage({
++      conversationId: conv.conversationId,
++      seq: 1,
++      role: "assistant",
++      content: "tool output",
++      tokenCount: 3,
++    });
++
++    await store.createMessageParts(msg.messageId, [
++      {
++        sessionId: "parts-sess",
++        partType: "tool",
++        ordinal: 0,
++        toolName: "Bash",
++        toolInput: '{"command":"ls"}',
++        toolOutput: "file1.ts\nfile2.ts",
++        toolCallId: "call-abc",
++      },
++      {
++        sessionId: "parts-sess",
++        partType: "text",
++        ordinal: 1,
++        textContent: "done",
++      },
++    ]);
++
++    const parts = await store.getMessageParts(msg.messageId);
++    expect(parts).toHaveLength(2);
++    expect(parts[0].partType).toBe("tool");
++    expect(parts[0].toolName).toBe("Bash");
++    expect(parts[0].ordinal).toBe(0);
++    expect(parts[1].partType).toBe("text");
++    expect(parts[1].textContent).toBe("done");
++    expect(parts[1].toolName).toBeNull();
++  });
++
++  it("createMessageParts with empty array is a no-op", async () => {
++    const store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "empty-parts-sess" });
++    const msg = await store.createMessage({
++      conversationId: conv.conversationId,
++      seq: 1,
++      role: "user",
++      content: "hi",
++      tokenCount: 1,
++    });
++    await store.createMessageParts(msg.messageId, []);
++    const parts = await store.getMessageParts(msg.messageId);
++    expect(parts).toHaveLength(0);
++  });
++});
++
++// ── deleteMessages ────────────────────────────────────────────────────────────
++
++describe("ConversationStore — deleteMessages", () => {
++  it("returns 0 for empty array", async () => {
++    const store = makeStore(makeDb());
++    expect(await store.deleteMessages([])).toBe(0);
++  });
++
++  it("deletes messages not referenced by summaries", async () => {
++    const store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "del-sess" });
++    const msg = await store.createMessage({
++      conversationId: conv.conversationId,
++      seq: 1,
++      role: "user",
++      content: "deletable",
++      tokenCount: 1,
++    });
++
++    const deleted = await store.deleteMessages([msg.messageId]);
++    expect(deleted).toBe(1);
++    expect(await store.getMessageById(msg.messageId)).toBeNull();
++  });
++});
++
++// ── searchMessages — regex mode ───────────────────────────────────────────────
++
++describe("ConversationStore — searchMessages regex", () => {
++  it("finds messages matching a regex pattern", async () => {
++    const store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "search-sess" });
++    await store.createMessage({
++      conversationId: conv.conversationId,
++      seq: 1,
++      role: "user",
++      content: "use React hooks",
++      tokenCount: 3,
++    });
++    await store.createMessage({
++      conversationId: conv.conversationId,
++      seq: 2,
++      role: "user",
++      content: "prefer Vue",
++      tokenCount: 2,
++    });
++
++    const results = await store.searchMessages({
++      query: "React|Vue",
++      mode: "regex",
++    });
++    expect(results.length).toBeGreaterThanOrEqual(2);
++  });
++
++  it("throws on unsafe regex pattern", async () => {
++    const store = makeStore(makeDb());
++    await expect(
++      store.searchMessages({ query: "(a+)+$", mode: "regex" }), // codeql[js/redos] - intentional test input
++    ).rejects.toThrow(/unsafe/i);
++  });
++
++  it("returns empty when no message matches regex", async () => {
++    const store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "nomatch-sess" });
++    await store.createMessage({
++      conversationId: conv.conversationId,
++      seq: 1,
++      role: "user",
++      content: "hello world",
++      tokenCount: 2,
++    });
++
++    const results = await store.searchMessages({ query: "xyz123nomatch", mode: "regex" });
++    expect(results).toHaveLength(0);
++  });
++
++  it("respects limit in regex search", async () => {
++    const store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "limit-sess" });
++    for (let i = 1; i <= 5; i++) {
++      await store.createMessage({
++        conversationId: conv.conversationId,
++        seq: i,
++        role: "user",
++        content: `token-${i}`,
++        tokenCount: 1,
++      });
++    }
++    const results = await store.searchMessages({ query: "token-\\d", mode: "regex", limit: 2 });
++    expect(results).toHaveLength(2);
++  });
++});
++
++// ── withTransaction ───────────────────────────────────────────────────────────
++
++describe("ConversationStore — withTransaction", () => {
++  it("rolls back on thrown error and re-throws", async () => {
++    const store = makeStore(makeDb());
++    const conv = await store.createConversation({ sessionId: "tx-sess" });
++
++    await expect(
++      store.withTransaction(async () => {
++        await store.createMessage({
++          conversationId: conv.conversationId,
++          seq: 1,
++          role: "user",
++          content: "aborted",
++          tokenCount: 1,
++        });
++        throw new Error("intentional rollback");
++      }),
++    ).rejects.toThrow("intentional rollback");
++
++    // Message should not exist after rollback
++    expect(await store.getMessageCount(conv.conversationId)).toBe(0);
++  });
++});
+diff --git a/test/store/full-text-fallback.test.ts b/test/store/full-text-fallback.test.ts
+new file mode 100644
+index 0000000..2c53817
+--- /dev/null
++++ b/test/store/full-text-fallback.test.ts
+@@ -0,0 +1,147 @@
++import { describe, it, expect } from "vitest";
++import {
++  buildLikeSearchPlan,
++  createFallbackSnippet,
++} from "../../src/store/full-text-fallback.js";
++
++describe("buildLikeSearchPlan", () => {
++  it("extracts simple single-word query", () => {
++    const plan = buildLikeSearchPlan("content", "hello");
++    expect(plan.terms).toEqual(["hello"]);
++    expect(plan.where).toEqual([`LOWER(content) LIKE ? ESCAPE '\\'`]);
++    expect(plan.args).toEqual(["%hello%"]);
++  });
++
++  it("extracts multiple words as separate terms", () => {
++    const plan = buildLikeSearchPlan("content", "foo bar baz");
++    expect(plan.terms).toEqual(["foo", "bar", "baz"]);
++    expect(plan.args).toHaveLength(3);
++    expect(plan.args[0]).toBe("%foo%");
++    expect(plan.args[1]).toBe("%bar%");
++    expect(plan.args[2]).toBe("%baz%");
++  });
++
++  it("handles quoted phrases as single terms", () => {
++    const plan = buildLikeSearchPlan("content", '"hello world"');
++    expect(plan.terms).toEqual(["hello world"]);
++    expect(plan.args).toEqual(["%hello world%"]);
++  });
++
++  it("normalizes terms to lowercase", () => {
++    const plan = buildLikeSearchPlan("content", "Hello WORLD");
++    expect(plan.terms).toEqual(["hello", "world"]);
++  });
++
++  it("strips leading and trailing punctuation from terms", () => {
++    const plan = buildLikeSearchPlan("content", "(example)");
++    expect(plan.terms).toEqual(["example"]);
++  });
++
++  it("deduplicates repeated terms", () => {
++    const plan = buildLikeSearchPlan("content", "foo foo bar foo");
++    expect(plan.terms).toEqual(["foo", "bar"]);
++  });
++
++  it("escapes LIKE special characters in args", () => {
++    // "%" is NOT in the edge-punctuation strip set, so "50%" stays as-is
++    // and its "%" must be backslash-escaped in the LIKE pattern
++    const plan = buildLikeSearchPlan("content", "50%");
++    expect(plan.terms).toEqual(["50%"]);
++    expect(plan.args[0]).toBe("%50\\%%");
++  });
++
++  it("escapes underscore in LIKE args", () => {
++    // "_" is not edge punctuation so it stays inside the term
++    const plan = buildLikeSearchPlan("content", "snake_case");
++    expect(plan.args[0]).toBe("%snake\\_case%");
++  });
++
++  it("escapes backslash in LIKE args", () => {
++    // "C:\Users" — backslash in the term must be doubled in the LIKE pattern
++    const plan = buildLikeSearchPlan("content", "C:\\Users");
++    expect(plan.args[0]).toBe("%c:\\\\users%");
++  });
++
++  it("returns empty plan for whitespace-only query", () => {
++    const plan = buildLikeSearchPlan("content", "   ");
++    expect(plan.terms).toEqual([]);
++    expect(plan.where).toEqual([]);
++    expect(plan.args).toEqual([]);
++  });
++
++  it("returns empty plan for empty string", () => {
++    const plan = buildLikeSearchPlan("content", "");
++    expect(plan.terms).toEqual([]);
++  });
++
++  it("uses the column name in WHERE clauses", () => {
++    const plan = buildLikeSearchPlan("my_column", "test");
++    expect(plan.where[0]).toContain("my_column");
++  });
++
++  it("where and args arrays have the same length as terms", () => {
++    const plan = buildLikeSearchPlan("content", "alpha beta gamma");
++    expect(plan.where).toHaveLength(plan.terms.length);
++    expect(plan.args).toHaveLength(plan.terms.length);
++  });
++});
++
++describe("createFallbackSnippet", () => {
++  it("returns full content when it is short and no match", () => {
++    const result = createFallbackSnippet("short text", ["missing"]);
++    expect(result).toBe("short text");
++  });
++
++  it("truncates long content with ellipsis when no match", () => {
++    const longContent = "a".repeat(100);
++    const result = createFallbackSnippet(longContent, ["missing"]);
++    expect(result).toMatch(/\.\.\.$/);
++    expect(result.length).toBeLessThanOrEqual(83); // 77 chars + "..."
++  });
++
++  it("returns a snippet centered on the matched term", () => {
++    const content = "The quick brown fox jumps over the lazy dog";
++    const result = createFallbackSnippet(content, ["fox"]);
++    expect(result).toContain("fox");
++  });
++
++  it("adds leading ellipsis when match is not near the start", () => {
++    const prefix = "x".repeat(50);
++    const content = `${prefix} target word here and after`;
++    const result = createFallbackSnippet(content, ["target"]);
++    expect(result).toMatch(/^\.\.\./);
++    expect(result).toContain("target");
++  });
++
++  it("adds trailing ellipsis when match is not near the end", () => {
++    const suffix = "x".repeat(100);
++    const content = `target word here ${suffix}`;
++    const result = createFallbackSnippet(content, ["target"]);
++    expect(result).toMatch(/\.\.\.$/);
++    expect(result).toContain("target");
++  });
++
++  it("picks the earliest matching term among multiple candidates", () => {
++    const content = "alpha comes before beta in this sentence";
++    // "beta" appears later but "alpha" appears first
++    const result = createFallbackSnippet(content, ["beta", "alpha"]);
++    // Snippet should start closer to "alpha"
++    const alphaIdx = result.indexOf("alpha");
++    const betaIdx = result.indexOf("beta");
++    expect(alphaIdx).toBeGreaterThanOrEqual(0);
++    expect(alphaIdx).toBeLessThan(betaIdx === -1 ? Infinity : betaIdx);
++  });
++
++  it("handles empty terms array gracefully", () => {
++    const result = createFallbackSnippet("some content", []);
++    // Falls back to head truncation — no crash
++    expect(typeof result).toBe("string");
++  });
++
++  it("is case-insensitive when finding matches", () => {
++    const content = "The QUICK brown fox";
++    // terms are expected to be lowercase (as produced by buildLikeSearchPlan)
++    const result = createFallbackSnippet(content, ["quick"]);
++    expect(result).toContain("QUICK");
++  });
++});
+diff --git a/test/store/summary-store.test.ts b/test/store/summary-store.test.ts
+new file mode 100644
+index 0000000..b8aa573
+--- /dev/null
++++ b/test/store/summary-store.test.ts
+@@ -0,0 +1,551 @@
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterEach, beforeEach, describe, expect, it } from "vitest";
++import type { DatabaseSync } from "node:sqlite";
++import { getLcmConnection, closeLcmConnection } from "../../src/db/connection.js";
++import { runLcmMigrations } from "../../src/db/migration.js";
++import { SummaryStore } from "../../src/store/summary-store.js";
++import { ConversationStore } from "../../src/store/conversation-store.js";
++
++const tempDirs: string[] = [];
++
++afterEach(() => {
++  closeLcmConnection();
++  for (const dir of tempDirs.splice(0)) {
++    rmSync(dir, { recursive: true, force: true });
++  }
++});
++
++function makeDb(): DatabaseSync {
++  const tempDir = mkdtempSync(join(tmpdir(), "lcm-summary-store-test-"));
++  tempDirs.push(tempDir);
++  const db = getLcmConnection(join(tempDir, "test.db"));
++  runLcmMigrations(db);
++  return db;
++}
++
++function makeStore(db: DatabaseSync): SummaryStore {
++  return new SummaryStore(db, { fts5Available: false });
++}
++
++async function makeConversation(db: DatabaseSync): Promise<number> {
++  const cs = new ConversationStore(db, { fts5Available: false });
++  const conv = await cs.createConversation({ sessionId: `sess-${Math.random()}` });
++  return conv.conversationId;
++}
++
++// ── insertSummary / getSummary ────────────────────────────────────────────────
++
++describe("SummaryStore — insertSummary / getSummary", () => {
++  it("round-trips a leaf summary with required fields", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    const rec = await store.insertSummary({
++      summaryId: "sum-001",
++      conversationId: convId,
++      kind: "leaf",
++      content: "This is a leaf summary.",
++      tokenCount: 10,
++    });
++
++    expect(rec.summaryId).toBe("sum-001");
++    expect(rec.kind).toBe("leaf");
++    expect(rec.content).toBe("This is a leaf summary.");
++    expect(rec.tokenCount).toBe(10);
++    expect(rec.depth).toBe(0); // default for leaf when depth omitted
++    expect(rec.createdAt).toBeInstanceOf(Date);
++    expect(rec.fileIds).toEqual([]);
++    expect(rec.earliestAt).toBeNull();
++    expect(rec.latestAt).toBeNull();
++    expect(rec.descendantCount).toBe(0);
++    expect(rec.descendantTokenCount).toBe(0);
++    expect(rec.sourceMessageTokenCount).toBe(0);
++  });
++
++  it("round-trips a condensed summary with all optional fields", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++    const earliest = new Date("2024-01-01T00:00:00Z");
++    const latest = new Date("2024-06-01T00:00:00Z");
++
++    const rec = await store.insertSummary({
++      summaryId: "sum-002",
++      conversationId: convId,
++      kind: "condensed",
++      depth: 2,
++      content: "Condensed summary content.",
++      tokenCount: 50,
++      fileIds: ["file-a", "file-b"],
++      earliestAt: earliest,
++      latestAt: latest,
++      descendantCount: 5,
++      descendantTokenCount: 200,
++      sourceMessageTokenCount: 300,
++    });
++
++    expect(rec.kind).toBe("condensed");
++    expect(rec.depth).toBe(2);
++    expect(rec.fileIds).toEqual(["file-a", "file-b"]);
++    expect(rec.earliestAt?.toISOString()).toBe(earliest.toISOString());
++    expect(rec.latestAt?.toISOString()).toBe(latest.toISOString());
++    expect(rec.descendantCount).toBe(5);
++    expect(rec.descendantTokenCount).toBe(200);
++    expect(rec.sourceMessageTokenCount).toBe(300);
++  });
++
++  it("getSummary returns null for unknown summaryId", async () => {
++    const store = makeStore(makeDb());
++    expect(await store.getSummary("no-such-id")).toBeNull();
++  });
++
++  it("getSummariesByConversation returns all summaries for a conversation", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "s1", conversationId: convId, kind: "leaf", content: "a", tokenCount: 1 });
++    await store.insertSummary({ summaryId: "s2", conversationId: convId, kind: "leaf", content: "b", tokenCount: 1 });
++
++    const summaries = await store.getSummariesByConversation(convId);
++    expect(summaries).toHaveLength(2);
++    expect(summaries.map((s) => s.summaryId)).toContain("s1");
++    expect(summaries.map((s) => s.summaryId)).toContain("s2");
++  });
++
++  it("defaults depth to 1 for condensed kind when depth is omitted", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    const rec = await store.insertSummary({
++      summaryId: "sum-cond-nodepth",
++      conversationId: convId,
++      kind: "condensed",
++      content: "no explicit depth",
++      tokenCount: 5,
++    });
++
++    expect(rec.depth).toBe(1);
++  });
++
++  it("clamps negative numeric fields to 0", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    const rec = await store.insertSummary({
++      summaryId: "sum-neg",
++      conversationId: convId,
++      kind: "leaf",
++      content: "negative fields",
++      tokenCount: 5,
++      descendantCount: -3,
++      descendantTokenCount: -100,
++      sourceMessageTokenCount: -50,
++    });
++
++    expect(rec.descendantCount).toBe(0);
++    expect(rec.descendantTokenCount).toBe(0);
++    expect(rec.sourceMessageTokenCount).toBe(0);
++  });
++});
++
++// ── linkSummaryToMessages / getSummaryMessages ────────────────────────────────
++
++describe("SummaryStore — linkSummaryToMessages", () => {
++  it("returns message ids in ordinal order after linking", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const cs = new ConversationStore(db, { fts5Available: false });
++    const conv = await cs.createConversation({ sessionId: "link-sess" });
++    const m1 = await cs.createMessage({ conversationId: conv.conversationId, seq: 1, role: "user", content: "a", tokenCount: 1 });
++    const m2 = await cs.createMessage({ conversationId: conv.conversationId, seq: 2, role: "user", content: "b", tokenCount: 1 });
++
++    await store.insertSummary({ summaryId: "link-sum", conversationId: conv.conversationId, kind: "leaf", content: "x", tokenCount: 1 });
++    await store.linkSummaryToMessages("link-sum", [m1.messageId, m2.messageId]);
++
++    const msgIds = await store.getSummaryMessages("link-sum");
++    expect(msgIds).toEqual([m1.messageId, m2.messageId]);
++  });
++
++  it("linkSummaryToMessages with empty array is a no-op", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++    await store.insertSummary({ summaryId: "empty-link", conversationId: convId, kind: "leaf", content: "x", tokenCount: 1 });
++    await store.linkSummaryToMessages("empty-link", []);
++    expect(await store.getSummaryMessages("empty-link")).toEqual([]);
++  });
++
++  it("duplicate link insertions are ignored (ON CONFLICT DO NOTHING)", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const cs = new ConversationStore(db, { fts5Available: false });
++    const conv = await cs.createConversation({ sessionId: "dup-link-sess" });
++    const m = await cs.createMessage({ conversationId: conv.conversationId, seq: 1, role: "user", content: "msg", tokenCount: 1 });
++
++    await store.insertSummary({ summaryId: "dup-sum", conversationId: conv.conversationId, kind: "leaf", content: "x", tokenCount: 1 });
++    await store.linkSummaryToMessages("dup-sum", [m.messageId]);
++    await store.linkSummaryToMessages("dup-sum", [m.messageId]); // duplicate — must not throw
++
++    const ids = await store.getSummaryMessages("dup-sum");
++    expect(ids).toHaveLength(1);
++  });
++});
++
++// ── linkSummaryToParents / getSummaryParents / getSummaryChildren ─────────────
++
++describe("SummaryStore — parent/child links", () => {
++  it("getSummaryParents returns parent summary records", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "parent-1", conversationId: convId, kind: "leaf", content: "parent", tokenCount: 5 });
++    await store.insertSummary({ summaryId: "child-1", conversationId: convId, kind: "condensed", content: "child", tokenCount: 10 });
++
++    await store.linkSummaryToParents("child-1", ["parent-1"]);
++
++    const parents = await store.getSummaryParents("child-1");
++    expect(parents).toHaveLength(1);
++    expect(parents[0].summaryId).toBe("parent-1");
++
++    const children = await store.getSummaryChildren("parent-1");
++    expect(children).toHaveLength(1);
++    expect(children[0].summaryId).toBe("child-1");
++  });
++
++  it("linkSummaryToParents with empty array is a no-op", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++    await store.insertSummary({ summaryId: "solo", conversationId: convId, kind: "leaf", content: "x", tokenCount: 1 });
++    await store.linkSummaryToParents("solo", []);
++    expect(await store.getSummaryParents("solo")).toEqual([]);
++  });
++});
++
++// ── getSummarySubtree ─────────────────────────────────────────────────────────
++
++describe("SummaryStore — getSummarySubtree", () => {
++  it("returns only the root when it has no children", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "root-only", conversationId: convId, kind: "leaf", content: "root", tokenCount: 1 });
++    const subtree = await store.getSummarySubtree("root-only");
++    expect(subtree).toHaveLength(1);
++    expect(subtree[0].summaryId).toBe("root-only");
++    expect(subtree[0].depthFromRoot).toBe(0);
++    expect(subtree[0].parentSummaryId).toBeNull();
++  });
++
++  it("includes children at correct depthFromRoot", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "tree-root", conversationId: convId, kind: "condensed", content: "root", tokenCount: 1 });
++    await store.insertSummary({ summaryId: "tree-child", conversationId: convId, kind: "leaf", content: "child", tokenCount: 1 });
++    await store.linkSummaryToParents("tree-child", ["tree-root"]);
++
++    const subtree = await store.getSummarySubtree("tree-root");
++    expect(subtree).toHaveLength(2);
++
++    const root = subtree.find((n) => n.summaryId === "tree-root");
++    const child = subtree.find((n) => n.summaryId === "tree-child");
++    expect(root?.depthFromRoot).toBe(0);
++    expect(child?.depthFromRoot).toBe(1);
++    expect(child?.parentSummaryId).toBe("tree-root");
++  });
++});
++
++// ── Context item operations ───────────────────────────────────────────────────
++
++describe("SummaryStore — context items", () => {
++  let db: DatabaseSync;
++  let store: SummaryStore;
++  let convId: number;
++
++  beforeEach(async () => {
++    db = makeDb();
++    store = makeStore(db);
++    convId = await makeConversation(db);
++  });
++
++  it("appendContextSummary then getContextItems returns summary item", async () => {
++    await store.insertSummary({ summaryId: "ctx-sum", conversationId: convId, kind: "leaf", content: "ctx content", tokenCount: 5 });
++    await store.appendContextSummary(convId, "ctx-sum");
++
++    const items = await store.getContextItems(convId);
++    expect(items).toHaveLength(1);
++    expect(items[0].itemType).toBe("summary");
++    expect(items[0].summaryId).toBe("ctx-sum");
++    expect(items[0].ordinal).toBe(0);
++  });
++
++  it("appendContextMessage then getContextItems returns message item", async () => {
++    const cs = new ConversationStore(db, { fts5Available: false });
++    const msg = await cs.createMessage({ conversationId: convId, seq: 1, role: "user", content: "hi", tokenCount: 1 });
++    await store.appendContextMessage(convId, msg.messageId);
++
++    const items = await store.getContextItems(convId);
++    expect(items).toHaveLength(1);
++    expect(items[0].itemType).toBe("message");
++    expect(items[0].messageId).toBe(msg.messageId);
++  });
++
++  it("appendContextMessages in bulk assigns sequential ordinals", async () => {
++    const cs = new ConversationStore(db, { fts5Available: false });
++    const m1 = await cs.createMessage({ conversationId: convId, seq: 1, role: "user", content: "a", tokenCount: 1 });
++    const m2 = await cs.createMessage({ conversationId: convId, seq: 2, role: "user", content: "b", tokenCount: 1 });
++    await store.appendContextMessages(convId, [m1.messageId, m2.messageId]);
++
++    const items = await store.getContextItems(convId);
++    expect(items).toHaveLength(2);
++    expect(items[0].ordinal).toBe(0);
++    expect(items[1].ordinal).toBe(1);
++  });
++
++  it("appendContextMessages with empty array is a no-op", async () => {
++    await store.appendContextMessages(convId, []);
++    expect(await store.getContextItems(convId)).toHaveLength(0);
++  });
++
++  it("getContextTokenCount returns sum of message and summary token counts", async () => {
++    const cs = new ConversationStore(db, { fts5Available: false });
++    const msg = await cs.createMessage({ conversationId: convId, seq: 1, role: "user", content: "hi", tokenCount: 7 });
++    await store.insertSummary({ summaryId: "tok-sum", conversationId: convId, kind: "leaf", content: "x", tokenCount: 13 });
++
++    await store.appendContextMessage(convId, msg.messageId);
++    await store.appendContextSummary(convId, "tok-sum");
++
++    const total = await store.getContextTokenCount(convId);
++    expect(total).toBe(20);
++  });
++
++  it("getContextTokenCount returns 0 for empty context", async () => {
++    expect(await store.getContextTokenCount(convId)).toBe(0);
++  });
++
++  it("replaceContextRangeWithSummary replaces a range and resequences ordinals", async () => {
++    const cs = new ConversationStore(db, { fts5Available: false });
++    const msgs = await Promise.all([1, 2, 3].map((seq) =>
++      cs.createMessage({ conversationId: convId, seq, role: "user", content: `msg${seq}`, tokenCount: 1 }),
++    ));
++    await store.appendContextMessages(convId, msgs.map((m) => m.messageId));
++
++    await store.insertSummary({ summaryId: "replace-sum", conversationId: convId, kind: "condensed", content: "summary", tokenCount: 5 });
++    await store.replaceContextRangeWithSummary({ conversationId: convId, startOrdinal: 0, endOrdinal: 1, summaryId: "replace-sum" });
++
++    const items = await store.getContextItems(convId);
++    // 2 items deleted (ordinals 0 and 1), 1 summary inserted at 0, msg at ordinal 2 shifts to 1
++    expect(items).toHaveLength(2);
++    expect(items[0].itemType).toBe("summary");
++    expect(items[0].ordinal).toBe(0);
++    expect(items[1].itemType).toBe("message");
++    expect(items[1].ordinal).toBe(1);
++  });
++});
++
++// ── searchSummaries — regex mode ──────────────────────────────────────────────
++
++describe("SummaryStore — searchSummaries regex", () => {
++  it("finds summaries matching a regex pattern", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "sreg-1", conversationId: convId, kind: "leaf", content: "agent hooks compaction", tokenCount: 3 });
++    await store.insertSummary({ summaryId: "sreg-2", conversationId: convId, kind: "leaf", content: "unrelated content", tokenCount: 2 });
++
++    const results = await store.searchSummaries({ query: "hook", mode: "regex" });
++    expect(results.length).toBeGreaterThanOrEqual(1);
++    expect(results.some((r) => r.summaryId === "sreg-1")).toBe(true);
++  });
++
++  it("returns empty when no summary matches regex", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "nomatch-sum", conversationId: convId, kind: "leaf", content: "hello world", tokenCount: 2 });
++    const results = await store.searchSummaries({ query: "xyz123nomatch", mode: "regex" });
++    expect(results).toHaveLength(0);
++  });
++
++  it("throws on unsafe regex pattern", async () => {
++    const store = makeStore(makeDb());
++    await expect(
++      store.searchSummaries({ query: "(a+)+$", mode: "regex" }), // codeql[js/redos] - intentional test input
++    ).rejects.toThrow(/unsafe/i);
++  });
++
++  it("respects limit in regex search", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    for (let i = 1; i <= 5; i++) {
++      await store.insertSummary({ summaryId: `rlim-${i}`, conversationId: convId, kind: "leaf", content: `item number ${i}`, tokenCount: 1 });
++    }
++    const results = await store.searchSummaries({ query: "item", mode: "regex", limit: 2 });
++    expect(results).toHaveLength(2);
++  });
++
++  it("filters by conversationId in regex search", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const cs = new ConversationStore(db, { fts5Available: false });
++    const conv1 = await cs.createConversation({ sessionId: "filter-sess-1" });
++    const conv2 = await cs.createConversation({ sessionId: "filter-sess-2" });
++
++    await store.insertSummary({ summaryId: "flt-1", conversationId: conv1.conversationId, kind: "leaf", content: "target content", tokenCount: 2 });
++    await store.insertSummary({ summaryId: "flt-2", conversationId: conv2.conversationId, kind: "leaf", content: "target content", tokenCount: 2 });
++
++    const results = await store.searchSummaries({ query: "target", mode: "regex", conversationId: conv1.conversationId });
++    expect(results.every((r) => r.conversationId === conv1.conversationId)).toBe(true);
++    expect(results.some((r) => r.summaryId === "flt-1")).toBe(true);
++    expect(results.some((r) => r.summaryId === "flt-2")).toBe(false);
++  });
++});
++
++// ── searchSummaries — full_text fallback (fts5Available: false) ───────────────
++
++describe("SummaryStore — searchSummaries full_text fallback (LIKE)", () => {
++  it("finds summaries via LIKE fallback", async () => {
++    const db = makeDb();
++    const store = makeStore(db); // fts5Available: false
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "fts-1", conversationId: convId, kind: "leaf", content: "compaction summary flow", tokenCount: 3 });
++    const results = await store.searchSummaries({ query: "compaction", mode: "full_text" });
++    expect(results.some((r) => r.summaryId === "fts-1")).toBe(true);
++  });
++
++  it("returns empty for LIKE fallback when no match", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "fts-nomatch", conversationId: convId, kind: "leaf", content: "some summary", tokenCount: 2 });
++    const results = await store.searchSummaries({ query: "zzznomatch", mode: "full_text" });
++    expect(results).toHaveLength(0);
++  });
++});
++
++// ── getDistinctDepthsInContext ────────────────────────────────────────────────
++
++describe("SummaryStore — getDistinctDepthsInContext", () => {
++  it("returns empty when no summary items in context", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++    expect(await store.getDistinctDepthsInContext(convId)).toEqual([]);
++  });
++
++  it("returns distinct depth values for summary items", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "d0-sum", conversationId: convId, kind: "leaf", depth: 0, content: "x", tokenCount: 1 });
++    await store.insertSummary({ summaryId: "d1-sum", conversationId: convId, kind: "condensed", depth: 1, content: "y", tokenCount: 1 });
++    await store.appendContextSummary(convId, "d0-sum");
++    await store.appendContextSummary(convId, "d1-sum");
++
++    const depths = await store.getDistinctDepthsInContext(convId);
++    expect(depths).toContain(0);
++    expect(depths).toContain(1);
++  });
++
++  it("respects maxOrdinalExclusive bound", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertSummary({ summaryId: "ord-sum0", conversationId: convId, kind: "leaf", depth: 0, content: "x", tokenCount: 1 });
++    await store.insertSummary({ summaryId: "ord-sum1", conversationId: convId, kind: "condensed", depth: 2, content: "y", tokenCount: 1 });
++    await store.appendContextSummary(convId, "ord-sum0"); // ordinal 0
++    await store.appendContextSummary(convId, "ord-sum1"); // ordinal 1
++
++    // Only ordinals < 1 → only depth 0 summary at ordinal 0
++    const depths = await store.getDistinctDepthsInContext(convId, { maxOrdinalExclusive: 1 });
++    expect(depths).toContain(0);
++    expect(depths).not.toContain(2);
++  });
++});
++
++// ── LargeFile CRUD ────────────────────────────────────────────────────────────
++
++describe("SummaryStore — LargeFile CRUD", () => {
++  it("insertLargeFile and getLargeFile round-trip", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    const rec = await store.insertLargeFile({
++      fileId: "file-001",
++      conversationId: convId,
++      fileName: "report.pdf",
++      mimeType: "application/pdf",
++      byteSize: 204800,
++      storageUri: "s3://bucket/report.pdf",
++      explorationSummary: "A report about things.",
++    });
++
++    expect(rec.fileId).toBe("file-001");
++    expect(rec.fileName).toBe("report.pdf");
++    expect(rec.mimeType).toBe("application/pdf");
++    expect(rec.byteSize).toBe(204800);
++    expect(rec.storageUri).toBe("s3://bucket/report.pdf");
++    expect(rec.explorationSummary).toBe("A report about things.");
++    expect(rec.createdAt).toBeInstanceOf(Date);
++  });
++
++  it("insertLargeFile with minimal fields stores nulls", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    const rec = await store.insertLargeFile({
++      fileId: "file-min",
++      conversationId: convId,
++      storageUri: "file:///tmp/data.bin",
++    });
++
++    expect(rec.fileName).toBeNull();
++    expect(rec.mimeType).toBeNull();
++    expect(rec.byteSize).toBeNull();
++    expect(rec.explorationSummary).toBeNull();
++  });
++
++  it("getLargeFile returns null for unknown fileId", async () => {
++    const store = makeStore(makeDb());
++    expect(await store.getLargeFile("no-such-file")).toBeNull();
++  });
++
++  it("getLargeFilesByConversation returns all files for that conversation", async () => {
++    const db = makeDb();
++    const store = makeStore(db);
++    const convId = await makeConversation(db);
++
++    await store.insertLargeFile({ fileId: "lf-a", conversationId: convId, storageUri: "s3://a" });
++    await store.insertLargeFile({ fileId: "lf-b", conversationId: convId, storageUri: "s3://b" });
++
++    const files = await store.getLargeFilesByConversation(convId);
++    expect(files).toHaveLength(2);
++    expect(files.map((f) => f.fileId)).toContain("lf-a");
++    expect(files.map((f) => f.fileId)).toContain("lf-b");
++  });
++
++  it("getLargeFilesByConversation returns empty for unknown conversationId", async () => {
++    const store = makeStore(makeDb());
++    expect(await store.getLargeFilesByConversation(99999)).toEqual([]);
++  });
++});

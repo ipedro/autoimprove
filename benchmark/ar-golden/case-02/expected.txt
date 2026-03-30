@@ -1,0 +1,7 @@
+high:correctness:spike loop in STEP 0 has no explicit termination condition — "loop until convergence or won't-do" is underspecified, a single failing spike round could cause infinite re-runs if failure_reason never changes
+high:process:AR now reviews "spike evidence (diffs + test results)" but spike agents write to parallel worktrees — no instruction specifies how to collect and pass the spike artifacts to the AR skill, leaving the handoff undefined
+medium:correctness:won't-do path requires "SendMessage orchestrator + await ack before closing" but the workflow doc defines no timeout or escalation path if the orchestrator does not respond, causing a permanent block
+medium:process:spike agents are scoped to "max 3 rounds" but this limit applies at the idea-matrix level not per-option — if 3 top options each need 3 rounds, 9 Haiku agents may spawn, exceeding the §3 5-concurrent-subagent limit
+medium:docs:STEP 0 change refers to "spike top options w/ Haiku (parallel worktrees)" but the superpowers:using-git-worktrees skill is not referenced — teammates may not know to use worktree isolation for spike agents
+low:docs:AR-results plan files (issue-137-ar-results.md, issue-137-ar-impl-results.md) committed to plans/ contain absolute local paths (/Users/pedro/.claude/...) which will be stale or misleading for other machines and future sessions
+low:style:design decision section renumbers steps 3→5 but the introductory sentence "Trivial decisions skip steps 1-3" is not updated to reflect the new numbering (should now say "skip steps 1-4")
