@@ -69,41 +69,12 @@ benchmarks:
         tolerance: 0.0
         significance: 0.01
 
-  - name: ar-effectiveness
-    command: bash benchmark/ar-effectiveness.sh
-    metrics:
-      - name: ar_precision
-        extract: "json:.ar_precision"
-        direction: higher_is_better
-        tolerance: 0.05
-        significance: 0.01
-
-      - name: ar_quality_score
-        extract: "json:.ar_quality_score"
-        direction: higher_is_better
-        tolerance: 1.0
-        significance: 0.05
-
-  - name: matrix-effectiveness
-    command: bash benchmark/matrix-effectiveness.sh
-    metrics:
-      - name: matrix_cell_depth
-        extract: "json:.matrix_cell_depth"
-        direction: higher_is_better
-        tolerance: 5.0
-        significance: 0.01
-
-      - name: matrix_convergence_quality
-        extract: "json:.matrix_convergence_quality"
-        direction: higher_is_better
-        tolerance: 0.0
-        significance: 0.01
-
-      - name: matrix_option_diversity
-        extract: "json:.matrix_option_diversity"
-        direction: higher_is_better
-        tolerance: 0.0
-        significance: 0.01
+  # NOTE: ar-effectiveness and matrix-effectiveness benchmarks REMOVED (2026-03-30)
+  # Root cause of Run 10 (5/5 "unknown") and Run 11 (stuck).
+  # These benchmarks spawn claude CLI sessions (haiku+sonnet) per experiment,
+  # making them too slow (minutes), expensive (burns token pools), and
+  # non-deterministic for per-experiment evaluation.
+  # TODO: Reintroduce as periodic quality checks (weekly/milestone), not per-experiment gates.
 
 themes:
   auto:
@@ -115,7 +86,9 @@ themes:
       agent_prompts: 2        # improve agent instructions for better accuracy
       command_docs: 1         # improve command descriptions and argument hints
       refactoring: 1
-      skill_effectiveness: 3  # measure AR + idea-matrix output quality (not structure)
+      # skill_effectiveness REMOVED (2026-03-30): no focus_paths defined,
+      # dependent benchmarks (ar/matrix-effectiveness) are LLM-based and too
+      # slow/expensive for per-experiment evaluation. Caused Run 10 "unknown" cascade.
     focus_paths:
       test_coverage:
         - "test/**"
