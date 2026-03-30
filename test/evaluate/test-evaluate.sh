@@ -3286,5 +3286,378 @@ assert_json_field "no-dir-regress: verdict_logic is regression_detected" "$resul
 rm -f "$no_dir_regress_config" "$no_dir_regress_baseline"
 
 echo ""
+echo "=== Compare Mode Gates Array Tests ==="
+
+# Test: compare mode output includes a gates array with correct gate entries
+# evaluate.sh emits GATE_RESULTS in both init and compare mode output.
+# Verify that compare mode (with a real baseline) includes gates[] with correct names and passed flags.
+echo "--- Test: compare mode output includes populated gates array ---"
+compare_gates_config=$(mktemp)
+cat > "$compare_gates_config" <<EOF
+{
+  "gates": [
+    {"name": "g1-pass", "command": "true"},
+    {"name": "g2-pass", "command": "true"}
+  ],
+  "benchmarks": [
+    {
+      "name": "cg-bench",
+      "command": "echo '{\"val\": 110}'",
+      "metrics": [
+        {
+          "name": "val",
+          "extract": "json:.val",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+compare_gates_baseline=$(mktemp)
+echo '{"metrics":{"val":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$compare_gates_baseline"
+result=$("$EVALUATE" "$compare_gates_config" "$compare_gates_baseline" 2>/dev/null)
+assert_json_field "compare-gates: verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "compare-gates: gates array has 2 entries" "$result" '.gates | length' '2'
+assert_json_field "compare-gates: gates[0].name is g1-pass" "$result" '.gates[0].name' 'g1-pass'
+assert_json_field "compare-gates: gates[0].passed is true" "$result" '.gates[0].passed' 'true'
+assert_json_field "compare-gates: gates[1].name is g2-pass" "$result" '.gates[1].name' 'g2-pass'
+assert_json_field "compare-gates: gates[1].passed is true" "$result" '.gates[1].passed' 'true'
+assert_json_field "compare-gates: gates array present (has key)" "$result" 'has("gates")' 'true'
+rm -f "$compare_gates_config" "$compare_gates_baseline"
+
+# Test: compare mode with a single gate also emits gates array (not empty)
+echo "--- Test: compare mode with single gate emits single-entry gates array ---"
+compare_one_gate_config=$(mktemp)
+cat > "$compare_one_gate_config" <<EOF
+{
+  "gates": [{"name": "solo-gate", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "one-gate-bench",
+      "command": "echo '{\"metric\": 50}'",
+      "metrics": [
+        {
+          "name": "metric",
+          "extract": "json:.metric",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+compare_one_gate_baseline=$(mktemp)
+echo '{"metrics":{"metric":50},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$compare_one_gate_baseline"
+result=$("$EVALUATE" "$compare_one_gate_config" "$compare_one_gate_baseline" 2>/dev/null)
+# metric is unchanged (neutral) — gates still populate
+assert_json_field "compare-one-gate: verdict is neutral" "$result" '.verdict' 'neutral'
+assert_json_field "compare-one-gate: gates array length is 1" "$result" '.gates | length' '1'
+assert_json_field "compare-one-gate: gate name is solo-gate" "$result" '.gates[0].name' 'solo-gate'
+assert_json_field "compare-one-gate: gate passed is true" "$result" '.gates[0].passed' 'true'
+assert_json_field "compare-one-gate: gate has exit_code key" "$result" '.gates[0] | has("exit_code")' 'true'
+assert_json_field "compare-one-gate: gate has duration_ms key" "$result" '.gates[0] | has("duration_ms")' 'true'
+rm -f "$compare_one_gate_config" "$compare_one_gate_baseline"
+
+echo ""
+echo "=== Three Separate Benchmarks All Regress Tests ==="
+
+# Test: 3 separate benchmarks, each with 1 metric, all regress → all 3 in regressed[], verdict=regress
+# bench-1: metric_a (100→10, -90%), bench-2: metric_b (100→20, -80%), bench-3: metric_c (100→30, -70%)
+# All are separate benchmark objects — verifies that regression accumulates across benchmark boundaries.
+echo "--- Test: 3 separate benchmarks all regress → all 3 in regressed[], reason lists all 3 ---"
+three_bench_all_regress_config=$(mktemp)
+cat > "$three_bench_all_regress_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "bench-1",
+      "command": "echo '{\"metric_a\": 10}'",
+      "metrics": [
+        {
+          "name": "metric_a",
+          "extract": "json:.metric_a",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    },
+    {
+      "name": "bench-2",
+      "command": "echo '{\"metric_b\": 20}'",
+      "metrics": [
+        {
+          "name": "metric_b",
+          "extract": "json:.metric_b",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    },
+    {
+      "name": "bench-3",
+      "command": "echo '{\"metric_c\": 30}'",
+      "metrics": [
+        {
+          "name": "metric_c",
+          "extract": "json:.metric_c",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+three_bench_all_regress_baseline=$(mktemp)
+echo '{"metrics":{"metric_a":100,"metric_b":100,"metric_c":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$three_bench_all_regress_baseline"
+result=$("$EVALUATE" "$three_bench_all_regress_config" "$three_bench_all_regress_baseline" 2>/dev/null)
+assert_json_field "3-bench-regress: verdict is regress" "$result" '.verdict' 'regress'
+assert_json_field "3-bench-regress: verdict_logic is regression_detected" "$result" '.verdict_logic' 'regression_detected'
+regressed_len=$(echo "$result" | jq '.regressed | length')
+assert_eq "3-bench-regress: regressed array has 3 entries" "3" "$regressed_len"
+assert_json_field "3-bench-regress: metric_a in regressed" "$result" '.regressed | contains(["metric_a"])' 'true'
+assert_json_field "3-bench-regress: metric_b in regressed" "$result" '.regressed | contains(["metric_b"])' 'true'
+assert_json_field "3-bench-regress: metric_c in regressed" "$result" '.regressed | contains(["metric_c"])' 'true'
+assert_json_field "3-bench-regress: improved is empty" "$result" '.improved | length' '0'
+# reason lists all 3 metric names comma-separated
+r3_reason=$(echo "$result" | jq -r '.reason')
+if echo "$r3_reason" | grep -q "metric_a"; then
+  echo "  PASS: 3-bench-regress reason mentions metric_a"
+  ((PASS++)) || true
+else
+  echo "  FAIL: 3-bench-regress reason missing metric_a (got: $r3_reason)"
+  ((FAIL++)) || true
+fi
+if echo "$r3_reason" | grep -q "metric_b"; then
+  echo "  PASS: 3-bench-regress reason mentions metric_b"
+  ((PASS++)) || true
+else
+  echo "  FAIL: 3-bench-regress reason missing metric_b (got: $r3_reason)"
+  ((FAIL++)) || true
+fi
+if echo "$r3_reason" | grep -q "metric_c"; then
+  echo "  PASS: 3-bench-regress reason mentions metric_c"
+  ((PASS++)) || true
+else
+  echo "  FAIL: 3-bench-regress reason missing metric_c (got: $r3_reason)"
+  ((FAIL++)) || true
+fi
+rm -f "$three_bench_all_regress_config" "$three_bench_all_regress_baseline"
+
+echo ""
+echo "=== Three-Benchmark Mixed Accumulation Tests ==="
+
+# Test: bench-1 neutral, bench-2 improves, bench-3 regresses → regress wins
+# metric_x: 100→100 (neutral), metric_y: 100→130 (+30%, improved), metric_z: 100→50 (-50%, regressed)
+# regression_detected overrides the improvement — verdict is regress
+echo "--- Test: 3 benchmarks neutral+improve+regress → regress verdict wins ---"
+three_bench_mixed_config=$(mktemp)
+cat > "$three_bench_mixed_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "bench-neutral",
+      "command": "echo '{\"metric_x\": 100}'",
+      "metrics": [
+        {
+          "name": "metric_x",
+          "extract": "json:.metric_x",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    },
+    {
+      "name": "bench-improve",
+      "command": "echo '{\"metric_y\": 130}'",
+      "metrics": [
+        {
+          "name": "metric_y",
+          "extract": "json:.metric_y",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    },
+    {
+      "name": "bench-regress",
+      "command": "echo '{\"metric_z\": 50}'",
+      "metrics": [
+        {
+          "name": "metric_z",
+          "extract": "json:.metric_z",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+three_bench_mixed_baseline=$(mktemp)
+echo '{"metrics":{"metric_x":100,"metric_y":100,"metric_z":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$three_bench_mixed_baseline"
+result=$("$EVALUATE" "$three_bench_mixed_config" "$three_bench_mixed_baseline" 2>/dev/null)
+assert_json_field "3-bench-mixed: verdict is regress (regression wins over improvement)" "$result" '.verdict' 'regress'
+assert_json_field "3-bench-mixed: metric_z in regressed" "$result" '.regressed | contains(["metric_z"])' 'true'
+assert_json_field "3-bench-mixed: metric_y in improved" "$result" '.improved | contains(["metric_y"])' 'true'
+assert_json_field "3-bench-mixed: metric_x not in improved (neutral)" "$result" '.improved | contains(["metric_x"])' 'false'
+assert_json_field "3-bench-mixed: metric_x not in regressed (neutral)" "$result" '.regressed | contains(["metric_x"])' 'false'
+assert_json_field "3-bench-mixed: verdict_logic is regression_detected" "$result" '.verdict_logic' 'regression_detected'
+rm -f "$three_bench_mixed_config" "$three_bench_mixed_baseline"
+
+# Test: bench-1 improves, bench-2 improves, bench-3 improves → keep, all 3 in improved[]
+echo "--- Test: 3 separate benchmarks all improve → keep verdict, all 3 in improved[] ---"
+three_bench_all_improve_config=$(mktemp)
+cat > "$three_bench_all_improve_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "bench-a",
+      "command": "echo '{\"alpha\": 120}'",
+      "metrics": [
+        {
+          "name": "alpha",
+          "extract": "json:.alpha",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    },
+    {
+      "name": "bench-b",
+      "command": "echo '{\"beta\": 150}'",
+      "metrics": [
+        {
+          "name": "beta",
+          "extract": "json:.beta",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    },
+    {
+      "name": "bench-c",
+      "command": "echo '{\"gamma\": 200}'",
+      "metrics": [
+        {
+          "name": "gamma",
+          "extract": "json:.gamma",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+three_bench_all_improve_baseline=$(mktemp)
+echo '{"metrics":{"alpha":100,"beta":100,"gamma":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$three_bench_all_improve_baseline"
+result=$("$EVALUATE" "$three_bench_all_improve_config" "$three_bench_all_improve_baseline" 2>/dev/null)
+assert_json_field "3-bench-improve: verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "3-bench-improve: alpha in improved" "$result" '.improved | contains(["alpha"])' 'true'
+assert_json_field "3-bench-improve: beta in improved" "$result" '.improved | contains(["beta"])' 'true'
+assert_json_field "3-bench-improve: gamma in improved" "$result" '.improved | contains(["gamma"])' 'true'
+assert_json_field "3-bench-improve: improved length is 3" "$result" '.improved | length' '3'
+assert_json_field "3-bench-improve: regressed is empty" "$result" '.regressed | length' '0'
+assert_json_field "3-bench-improve: verdict_logic is no_regressions_and_at_least_one_improvement" "$result" '.verdict_logic' 'no_regressions_and_at_least_one_improvement'
+rm -f "$three_bench_all_improve_config" "$three_bench_all_improve_baseline"
+
+echo ""
+echo "=== Shell Extractor Multi-Line Output Tests ==="
+
+# Test: shell extractor with head -1 takes only the first line of multi-line output
+# The benchmark command emits multiple lines; the extractor (head -1) reads only line 1.
+# This verifies that shell extractors work correctly and are not broken by multi-line output.
+echo "--- Test: shell extractor head -1 extracts only first line from multi-line output ---"
+multiline_config=$(mktemp)
+cat > "$multiline_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "multiline-bench",
+      "command": "printf '42\n99\n77\n'",
+      "metrics": [
+        {
+          "name": "first_line",
+          "extract": "head -1",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$multiline_config" /dev/null 2>/dev/null)
+assert_json_field "multiline-extractor: mode is init" "$result" '.mode' 'init'
+assert_json_field "multiline-extractor: first_line is 42 (only first line taken)" "$result" '.metrics.first_line' '42'
+# Confirm second and third line values (99, 77) did not bleed into the metric
+ml_val=$(echo "$result" | jq '.metrics.first_line')
+assert_eq "multiline-extractor: value is exactly 42 (not 99 or 77)" "42" "$ml_val"
+rm -f "$multiline_config"
+
+# Test: shell extractor tail -1 extracts only the last line from multi-line output
+echo "--- Test: shell extractor tail -1 extracts only last line from multi-line output ---"
+tail_config=$(mktemp)
+cat > "$tail_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "tail-bench",
+      "command": "printf '10\n20\n30\n'",
+      "metrics": [
+        {
+          "name": "last_line",
+          "extract": "tail -1",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$tail_config" /dev/null 2>/dev/null)
+assert_json_field "tail-extractor: mode is init" "$result" '.mode' 'init'
+assert_json_field "tail-extractor: last_line is 30 (tail -1 extracts last line)" "$result" '.metrics.last_line' '30'
+rm -f "$tail_config"
+
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
