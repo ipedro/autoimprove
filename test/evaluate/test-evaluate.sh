@@ -3815,5 +3815,155 @@ assert_json_field "json-null: ghost absent from .metrics (not scored)" "$result"
 rm -f "$json_null_config" "$json_null_baseline"
 
 echo ""
+echo "=== Baseline Structure Gap Tests ==="
+
+# Test: baseline is valid JSON but has no .metrics key → jq returns empty for every metric →
+# all metrics skipped (no candidate comparison possible) → neutral verdict
+echo "--- Test: baseline missing .metrics key → all metrics skipped → neutral ---"
+no_metrics_key_config=$(mktemp)
+cat > "$no_metrics_key_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "no-metrics-key-bench",
+      "command": "echo '{\"score\": 80}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+# Baseline is valid JSON but has no .metrics key — jq .metrics["score"] // empty → empty → skip
+no_metrics_key_baseline=$(mktemp)
+echo '{"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$no_metrics_key_baseline"
+result=$("$EVALUATE" "$no_metrics_key_config" "$no_metrics_key_baseline" 2>/dev/null)
+assert_json_field "no-metrics-key: verdict is neutral (no baseline values to compare)" "$result" '.verdict' 'neutral'
+assert_json_field "no-metrics-key: improved is empty (all metrics skipped)" "$result" '.improved | length' '0'
+assert_json_field "no-metrics-key: regressed is empty (all metrics skipped)" "$result" '.regressed | length' '0'
+assert_json_field "no-metrics-key: verdict_logic is no_improvements" "$result" '.verdict_logic' 'no_improvements'
+rm -f "$no_metrics_key_config" "$no_metrics_key_baseline"
+
+# Test: baseline has .metrics as empty object {} → no values for any metric → all skipped → neutral
+# Different from missing .metrics key — here .metrics exists but has no entries.
+echo "--- Test: baseline with empty .metrics object → all metrics skipped → neutral ---"
+empty_metrics_baseline_config=$(mktemp)
+cat > "$empty_metrics_baseline_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "empty-metrics-baseline-bench",
+      "command": "echo '{\"count\": 42}'",
+      "metrics": [
+        {
+          "name": "count",
+          "extract": "json:.count",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+empty_metrics_obj_baseline=$(mktemp)
+echo '{"metrics":{},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$empty_metrics_obj_baseline"
+result=$("$EVALUATE" "$empty_metrics_baseline_config" "$empty_metrics_obj_baseline" 2>/dev/null)
+assert_json_field "empty-metrics-obj: verdict is neutral (no baseline values)" "$result" '.verdict' 'neutral'
+assert_json_field "empty-metrics-obj: improved is empty" "$result" '.improved | length' '0'
+assert_json_field "empty-metrics-obj: regressed is empty" "$result" '.regressed | length' '0'
+rm -f "$empty_metrics_baseline_config" "$empty_metrics_obj_baseline"
+
+echo ""
+echo "=== Regression Within Tolerance Tests ==="
+
+# Test: regression within tolerance (not at boundary, not past it) → neutral
+# score: baseline=100, candidate=99 → delta=-1%; tolerance=0.02 → -0.01 < -0.02 is FALSE → neutral
+# This is distinct from the "at boundary" test (exactly -2%) and "just past" test (97.9).
+echo "--- Test: regression within tolerance (not at boundary) → neutral ---"
+within_tol_config=$(mktemp)
+cat > "$within_tol_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "within-tol-bench",
+      "command": "echo '{\"score\": 99}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+within_tol_baseline=$(mktemp)
+# score: 100→99, delta=-1%, tolerance=2% → within tolerance → NOT regressed → neutral
+echo '{"metrics":{"score":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$within_tol_baseline"
+result=$("$EVALUATE" "$within_tol_config" "$within_tol_baseline" 2>/dev/null)
+assert_json_field "within-tol: verdict is neutral (-1% drop within 2% tolerance)" "$result" '.verdict' 'neutral'
+assert_json_field "within-tol: score not in regressed (within tolerance)" "$result" '.regressed | contains(["score"])' 'false'
+assert_json_field "within-tol: score not in improved (below significance)" "$result" '.improved | contains(["score"])' 'false'
+assert_json_field "within-tol: verdict_logic is no_improvements" "$result" '.verdict_logic' 'no_improvements'
+rm -f "$within_tol_config" "$within_tol_baseline"
+
+# Test: lower_is_better regression within tolerance → neutral
+# latency: baseline=100, candidate=103 → delta=+3% raw, normalized=-3%; tolerance=0.05 → -0.03 < -0.05 is FALSE → neutral
+echo "--- Test: lower_is_better regression within tolerance → neutral ---"
+lib_within_tol_config=$(mktemp)
+cat > "$lib_within_tol_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "lib-within-tol-bench",
+      "command": "echo '{\"latency\": 103}'",
+      "metrics": [
+        {
+          "name": "latency",
+          "extract": "json:.latency",
+          "direction": "lower_is_better",
+          "tolerance": 0.05,
+          "significance": 0.02
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.05,
+  "significance_threshold": 0.02
+}
+EOF
+lib_within_tol_baseline=$(mktemp)
+# latency: 100→103, delta=+3% raw → normalized=-3% → -0.03 < -0.05 is FALSE → not regressed
+# and -0.03 > +0.02 is also FALSE → not improved → neutral
+echo '{"metrics":{"latency":100},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$lib_within_tol_baseline"
+result=$("$EVALUATE" "$lib_within_tol_config" "$lib_within_tol_baseline" 2>/dev/null)
+assert_json_field "lib-within-tol: verdict is neutral (3% increase within 5% tolerance)" "$result" '.verdict' 'neutral'
+assert_json_field "lib-within-tol: latency not in regressed (within tolerance)" "$result" '.regressed | contains(["latency"])' 'false'
+assert_json_field "lib-within-tol: latency not in improved" "$result" '.improved | contains(["latency"])' 'false'
+assert_json_field "lib-within-tol: verdict_logic is no_improvements" "$result" '.verdict_logic' 'no_improvements'
+rm -f "$lib_within_tol_config" "$lib_within_tol_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
