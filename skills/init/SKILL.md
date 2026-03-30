@@ -1,6 +1,6 @@
 ---
 name: init
-description: "Use when setting up autoimprove on a new project — scaffolding autoimprove.yaml, configuring gates, benchmarks, and experiment settings. Examples:
+description: "Use when setting up autoimprove on a new project — scaffolding autoimprove.yaml, configuring gates and benchmarks. Examples:
 
 <example>
 Context: User wants to start using autoimprove on their project.
@@ -14,9 +14,23 @@ Context: User has a new codebase and wants to configure autoimprove.
 user: \"configure autoimprove for this repo\"
 assistant: I'll use the init skill to create the autoimprove configuration.
 <commentary>Project onboarding — init skill.</commentary>
-</example>"
+</example>
+
+<example>
+Context: Onboarding a monorepo sub-package.
+user: \"init autoimprove for packages/api\"
+assistant: I'll use the init skill scoped to packages/api.
+<commentary>Monorepo sub-package — init skill.</commentary>
+</example>
+
+Do NOT use to check session state (use status). Do NOT use to reset state — delete experiments/state.json manually."
+argument-hint: "[<path>] [--update]"
 allowed-tools: [Read, Write, Edit, Bash, Glob]
 ---
+
+<SKILL-GUARD>
+You are NOW executing the init skill. Do NOT invoke this skill again via the Skill tool — execute the steps below directly.
+</SKILL-GUARD>
 
 Scaffold an `autoimprove.yaml` configuration for the current project. Detect the project type, test commands, and available tooling, then generate a working config with sensible defaults.
 
@@ -220,3 +234,80 @@ If no recognized test command exists, generate the config with the gate commente
 - **Re-running init on an existing project** updates `autoimprove.yaml` only — existing experiment logs and state are preserved. This is safe to do after a major project restructure where the benchmark commands need updating.
 - **`/autoimprove diagnose`** should be run immediately after init to validate the generated configuration. Init generates a best-effort config based on heuristics — diagnose catches any extraction or gate issues before the first session.
 - **For monorepos:** set `project.path` to the sub-package you want to improve, not the repo root. Benchmarks should run from that sub-path so metric extraction stays scoped.
+
+---
+
+## 14. Usage Examples
+
+### Example 1 — New Node.js project from scratch
+
+```
+user: set up autoimprove for my project
+```
+
+Init detects `package.json` with a `test` script (`jest --coverage`). It confirms tests pass, asks what to measure (user says "test count and TODO count"), generates `benchmark/metrics.sh`, writes `autoimprove.yaml` with gate `npm test` and two metrics, then runs `evaluate.sh` to confirm. Output:
+
+```
+autoimprove initialized for my-project (Node.js)
+
+Gates
+  [PASS] tests — npm test (42 tests, 0 failures)
+
+Metrics (baseline)
+  test_count: 42
+  todo_count: 7
+
+Config written to autoimprove.yaml
+Next step: /autoimprove run --experiments 3
+```
+
+### Example 2 — Monorepo with multiple packages
+
+```
+user: init autoimprove for packages/api
+```
+
+Init finds three `package.json` files but scopes to `packages/api/`. Sets `project.path: packages/api` in the config and makes the gate command `cd packages/api && npm test`. Warns that benchmarks will run relative to `packages/api/` — cross-package metrics need separate init runs.
+
+### Example 3 — Project with failing tests at init time
+
+```
+user: configure autoimprove for this repo
+```
+
+Init detects `pyproject.toml` with pytest. Running `pytest` exits non-zero (3 failing tests). Init does NOT block — it writes the config and adds a warning:
+
+```
+Warning: pytest exited non-zero (3 failures).
+Clean up existing failures before running your first session,
+or start with --theme failing_tests to let autoimprove fix them first.
+```
+
+### Example 4 — Update mode on an existing config
+
+```
+user: init autoimprove --update
+```
+
+`autoimprove.yaml` already exists. The `--update` flag skips the overwrite prompt and instead adds only missing sections (e.g., a missing `safety` block or unset `stagnation_window`). Existing sections are not touched. Reports which sections were added.
+
+### Example 5 — Claude Code plugin project
+
+```
+user: set up autoimprove here
+```
+
+Init detects `.claude-plugin/plugin.json`. Recognizes this as a Claude Code plugin. Suggests skill-behavior tests as a benchmark metric (count of passing skill behavior assertions). Generates a config with `themes.auto.priorities.skill_quality: 5` elevated.
+
+---
+
+## 15. Recommended Post-Init Checklist
+
+After init completes, verify the setup is solid before the first run:
+
+1. **Gate check** — does `evaluate.sh` exit 0 with all gates passing?
+2. **Metric extraction** — are all metric values non-zero and plausible?
+3. **Forbidden paths** — does `constraints.forbidden_paths` cover auto-generated files (e.g., `dist/`, `*.lock`)?
+4. **Trust tier start** — is tier 0 tight enough? For a new project with untested experiments, tighten to `max_files: 2, max_lines: 100`.
+5. **Theme priorities** — do the weights reflect where the most improvement potential is? Raise failing_tests if there are known failures; raise coverage_gaps for well-tested projects seeking coverage growth.
+6. **Trial run** — `/autoimprove run --experiments 3` with a fresh epoch baseline confirms the full pipeline works end-to-end before committing to a full session.
