@@ -79,6 +79,11 @@ telemetry failure must never block the review.
 
 Loop: run rounds until **deterministic convergence** is reached or `max_rounds` is hit.
 
+- **CRITICAL: sequential dispatch only.** Run the three agents in strict order for every round: Enthusiast first, then Adversary, then Judge.
+- **Do not dispatch Enthusiast and Adversary in parallel.** The Adversary's job is to challenge the Enthusiast's specific claims, so it MUST see the Enthusiast's completed output before it starts.
+- **Wait (blocking) for each agent to complete before continuing; dispatch each agent synchronously.** Collect the full Enthusiast output, pass that full output to the Adversary, then pass both full outputs to the Judge.
+- This rule still applies when `/adversarial-review` itself was launched as a background task. The top-level command may be backgrounded; the internal debate agents must still be dispatched synchronously and waited on to complete in order.
+
 - Start at round 1; increment after each complete round.
 - Stop early when `converged = true` (deterministic check, section 3d). Record `converged_at_round`.
 - Stop when `round > max_rounds`. Log: `"Safety cap reached at round <N> — stopping."` if the safety cap (10) triggered without convergence.
@@ -101,6 +106,8 @@ Prompt: Review the following code and find all issues.
 
 Output your findings as a single JSON object matching the schema. Nothing else.
 ```
+
+Dispatch the Enthusiast synchronously and wait for the full response before dispatching the Adversary.
 
 **Validate output**: Parse the Enthusiast's response as JSON.
 - If valid JSON with a non-empty `findings` array → store as `ENTHUSIAST_OUTPUT` and continue.
@@ -125,6 +132,8 @@ Prompt: Review the Enthusiast's findings and challenge them.
 
 Output your verdicts as a single JSON object matching the schema. Nothing else.
 ```
+
+Only start this step after `ENTHUSIAST_OUTPUT` is fully available. Pass the full Enthusiast JSON into the existing `<findings>` block exactly as produced — do not summarize or paraphrase it.
 
 **Validate output**: Parse the Adversary's response as JSON.
 - If valid JSON with a `verdicts` array → store as `ADVERSARY_OUTPUT` and continue.
@@ -153,6 +162,8 @@ Prompt: Arbitrate between the Enthusiast and Adversary.
 
 Output your rulings as a single JSON object matching the schema. Nothing else.
 ```
+
+Only start this step after both `ENTHUSIAST_OUTPUT` and `ADVERSARY_OUTPUT` are complete. Pass both full JSON payloads to the Judge — the Judge must see the exact debate record for the round.
 
 **Validate output**: Parse the Judge's response as JSON.
 - If valid JSON with a `rulings` array → store as `JUDGE_OUTPUT` and continue.
