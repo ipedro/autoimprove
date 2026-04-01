@@ -60,17 +60,17 @@ _assert "error message mentions FATAL" "grep -q 'FATAL' '$OUT_FILE'"
 echo ""
 
 # ---------------------------------------------------------------------------
-echo "--- Test 2: No TSV (cold start) → weights = base × 0.5 ---"
+echo "--- Test 2: No TSV (cold start) → weights = base × 1.0 (base priority, no penalty) ---"
 NO_TSV="$WORK_DIR/no.tsv"
 bash "$THEME_WEIGHTS" "$YAML_FILE" "$NO_TSV" > "$OUT_FILE" 2>/dev/null
 _assert "exits 0 without TSV" "[ -s '$OUT_FILE' ]"
 _assert "output is valid JSON" "python3 -c 'import json; json.load(open(\"$OUT_FILE\"))'"
-# test_coverage base=1, cold-start factor=0.5 → weight=0.5
-_assert "test_coverage cold-start = 0.5" \
-  "python3 -c 'import json; d=json.load(open(\"$OUT_FILE\")); assert d[\"test_coverage\"] == 0.5, f\"got {d[chr(34)+chr(116)+chr(101)+chr(115)+chr(116)+chr(95)+chr(99)+chr(111)+chr(118)+chr(101)+chr(114)+chr(97)+chr(103)+chr(101)+chr(34)]}\"'"
-# skill_quality base=2, cold-start factor=0.5 → weight=1.0
-_assert "skill_quality cold-start = 1.0" \
-  "python3 -c 'import json; d=json.load(open(\"$OUT_FILE\")); assert d[\"skill_quality\"] == 1.0'"
+# test_coverage base=1, cold-start factor=1.0 → weight=1.0 (new themes get base priority)
+_assert "test_coverage cold-start = 1.0 (base priority)" \
+  "python3 -c 'import json; d=json.load(open(\"$OUT_FILE\")); assert d[\"test_coverage\"] == 1.0, f\"got {d[chr(34)+chr(116)+chr(101)+chr(115)+chr(116)+chr(95)+chr(99)+chr(111)+chr(118)+chr(101)+chr(114)+chr(97)+chr(103)+chr(101)+chr(34)]}\"'"
+# skill_quality base=2, cold-start factor=1.0 → weight=2.0
+_assert "skill_quality cold-start = 2.0 (base priority)" \
+  "python3 -c 'import json; d=json.load(open(\"$OUT_FILE\")); assert d[\"skill_quality\"] == 2.0'"
 echo ""
 
 # ---------------------------------------------------------------------------

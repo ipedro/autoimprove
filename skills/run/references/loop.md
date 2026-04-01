@@ -321,6 +321,8 @@ If a theme has **0 keeps in its last 5 experiments**: log `[THEME_STALE: <theme>
 - **Do NOT auto-remove themes** — this is informational only
 - The existing stagnation mechanism (3b) handles loop-level skipping; this signal helps humans improve theme prompts
 
+**Design note — all-time keep rate (by design):** `theme-weights.sh` computes keep_rate from the full experiment history, not a rolling window. This is intentional for v1: all-time history is stable, simple to audit, and avoids overfitting to recent noise. The stagnation mechanism (3b) handles themes that are currently failing without needing recency decay. If a theme has many old successes but recent failures, the stagnation window will catch it. Recency decay is a v2 concern.
+
 ---
 
 # 4. Session End

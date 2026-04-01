@@ -14,7 +14,7 @@
 #   keep_rate = 0%   →  0.5× base  (penalised)
 #   keep_rate = 100% →  1.5× base  (boosted)
 #   floor             →  0.25× base (prevents starvation)
-#   cold start        →  factor 0.5 (< 3 samples, neutral)
+#   cold start        →  factor 1.0 (< 3 samples — new themes get base priority)
 #
 # Usage:
 #   bash scripts/theme-weights.sh [YAML_PATH] [TSV_PATH]
@@ -89,7 +89,7 @@ if os.path.isfile(tsv_path):
 
 # --- Apply weight formula ---
 COLD_START_MIN    = 3
-COLD_START_FACTOR = 0.5
+COLD_START_FACTOR = 1.0
 FLOOR_FACTOR      = 0.25
 
 adjusted = {}
@@ -99,7 +99,7 @@ for theme, base in base_priorities.items():
     keeps = theme_keeps.get(theme, 0)
 
     if runs < COLD_START_MIN:
-        factor = COLD_START_FACTOR          # neutral: no history yet
+        factor = COLD_START_FACTOR          # new theme: no penalty, no boost
     else:
         keep_rate = keeps / runs            # 0.0 – 1.0
         factor = 0.5 + keep_rate           # 0.5 – 1.5
