@@ -37,17 +37,21 @@ Tasks with `addBlockedBy` remain blocked until all blocking tasks are completed.
 
 ## Session Task Structure
 
+Experiments run **sequentially** — each experiment blocks the next. Only one experiment is ever in_progress at a time.
+
 ```
 Task: "Autoimprove Session #<N>"          [metadata: {session_id, started_at}]
   |
   +-- Task: "Setup: config + baseline + preflight"  [metadata: {phase: "setup"}]
   |
-  +-- Task: "Experiment 001: <theme>"     [blockedBy: setup] [metadata: {exp_id, theme, phase: "experiment"}]
-  +-- Task: "Experiment 002: <theme>"     [blockedBy: setup] [metadata: {exp_id, theme, phase: "experiment"}]
-  +-- Task: "Experiment 003: <theme>"     [blockedBy: setup] [metadata: {exp_id, theme, phase: "experiment"}]
+  +-- Task: "Experiment 001: <theme>"     [blockedBy: setup]      [metadata: {exp_id, theme, phase: "experiment"}]
+  +-- Task: "Experiment 002: <theme>"     [blockedBy: exp-001]    [metadata: {exp_id, theme, phase: "experiment"}]
+  +-- Task: "Experiment 003: <theme>"     [blockedBy: exp-002]    [metadata: {exp_id, theme, phase: "experiment"}]
   |
-  +-- Task: "Session Report"              [blockedBy: all experiments] [metadata: {phase: "report"}]
+  +-- Task: "Session Report"              [blockedBy: exp-N]      [metadata: {phase: "report"}]
 ```
+
+The report task blocks on the **last** experiment task only (which transitively depends on all prior experiments).
 
 ---
 
@@ -126,31 +130,12 @@ On `--resume` or when starting a new session after a crash:
 
 1. **TaskList check:** Call `TaskList()`. Look for tasks with `metadata.phase == "experiment"`.
    - Tasks with status `in_progress`: the agent crashed mid-experiment. Reset to `pending` with `TaskUpdate(status: "pending")`.
-   - Tasks with status `pending` and all `blockedBy` completed: ready to run.
+   - Tasks with status `pending` where **all** `blockedBy` tasks are `completed`: ready to run (at most one at a time — sequential chain).
    - If no TaskTree exists (fresh session or TaskTree expired): fall through to worktree cleanup.
 
 2. **Worktree cleanup (fallback):** The existing step 2f worktree scan remains as a safety net. It handles cases where the TaskTree is unavailable (e.g., new Claude Code session with no prior TaskTree).
 
 3. **Priority:** TaskTree recovery takes precedence. Only scan worktrees if TaskList returns no experiment tasks.
-
----
-
-## Parallel Execution Protocol
-
-When `budget.parallel_experiments > 1`:
-
-1. Read `parallel_experiments` from `autoimprove.yaml` (under `budget`). Default: `1`.
-2. Cap at `min(parallel_experiments, 5)` per UNBREAKABLE_RULES S3 (max 5 concurrent subagents).
-3. From `TaskList()`, collect up to `parallel_limit` pending experiment tasks with empty `blockedBy`.
-4. For each, `TaskUpdate(status: "in_progress", owner: "orchestrator")`.
-5. Spawn all Agent calls concurrently (each with its own worktree).
-6. As results return, process them one-at-a-time for evaluation and verdict:
-   - Evaluation MUST be serial (rolling baseline updates on KEEP).
-   - `TaskUpdate(status: "completed", metadata: {...})` after each verdict.
-   - Update `experiments.tsv` after each verdict.
-7. After the batch completes, check for more pending tasks. Repeat until none remain.
-
-**Critical constraint:** Even with parallel spawning, evaluation and merging are always serial. Two KEEPs cannot merge simultaneously -- the second must rebase onto the first.
 
 ---
 

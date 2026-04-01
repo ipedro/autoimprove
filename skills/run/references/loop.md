@@ -34,7 +34,7 @@ TaskUpdate(taskId: <exp_task_id>, status: "completed", metadata: {verdict: "skip
 Theme was pre-selected during task creation (step 2i in SKILL.md). Read the next pending experiment task's `metadata.theme`.
 
 ```
-next_task = first pending experiment task from TaskList() with empty blockedBy
+next_task = first pending experiment task from TaskList() where all blockedBy tasks are completed
 THEME = next_task.metadata.theme
 EXP_ID = next_task.metadata.exp_id
 ```
@@ -120,9 +120,7 @@ Do NOT include: metric names, benchmark definitions, scoring logic, tolerance/si
 
 ### Dispatch
 
-Read `budget.parallel_experiments` from config (default: 1). Cap at `min(parallel_experiments, 5)` per UNBREAKABLE_RULES S3.
-
-**Serial mode (parallel_experiments == 1):**
+Experiments always run **one at a time** — the TaskTree chain enforces this (each experiment is blocked by the previous). Spawn one experimenter and wait for it to complete before the loop returns to 3a.
 
 ```
 Agent(
@@ -132,15 +130,6 @@ Agent(
   model: "sonnet"
 )
 ```
-
-**Parallel mode (parallel_experiments > 1):**
-
-Collect up to `parallel_limit` pending experiment tasks with empty `blockedBy` from TaskList. For each:
-1. `TaskUpdate(taskId, status: "in_progress", owner: "orchestrator")`
-2. Build experimenter prompt (3d-3f for each task's theme)
-3. Spawn Agent concurrently
-
-Collect all results. Process evaluation (3h-3k) **serially** — rolling baseline updates on KEEP require sequential merging.
 
 Record the start time before spawning.
 
