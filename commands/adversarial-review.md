@@ -15,7 +15,6 @@ The skill runs the Enthusiast → Adversary → Judge chain inline, sequentially
 | (none) | Staged + unstaged diff (`git diff HEAD`) |
 | `diff` | Same as no argument — current working-tree diff |
 | `<file-path>` | A single file (e.g., `scripts/evaluate.sh`) |
-| `pr <number>` | A GitHub PR by number (e.g., `pr 42`) — fetches the PR diff via `gh` |
 
 ## Usage Examples
 
@@ -25,9 +24,6 @@ The skill runs the Enthusiast → Adversary → Judge chain inline, sequentially
 
 # Review a specific file
 /adversarial-review scripts/evaluate.sh
-
-# Review a GitHub PR
-/adversarial-review pr 42
 ```
 
 ## Output
@@ -50,14 +46,13 @@ Top confirmed:
   [HIGH]     Rolling baseline updated before gate check — allows ratchet bypass
   [HIGH]     Theme cooldown not persisted across sessions
 
-Run folder: ~/.autoimprove/ar-runs/YYYYMMDD-HHMMSS-<target-slug>/
+Run folder: ~/.autoimprove/runs/YYYYMMDD-HHMMSS-<target-slug>/
 ```
 
 ## Notes
 
 - **Runs in foreground.** The E→A→J chain is sequential and blocking — results appear when the full debate completes.
 - **Sequential internals are mandatory.** Enthusiast → Adversary → Judge must run sequentially, never in parallel, with outputs passed forward between agents.
-- Requires `gh` CLI for `pr <number>` and issue URL modes.
 
 ## Related Commands
 
