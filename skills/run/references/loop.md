@@ -113,10 +113,23 @@ Include:
 - Constraints: `max_files`, `max_lines`
 - Forbidden paths from `constraints.forbidden_paths`
 - Test modification policy from `constraints.test_modification`
+- Scope constraint from `focus_paths[THEME]` in `autoimprove.yaml` (if defined): list the paths/globs as "Only modify files matching: <paths>". If `focus_paths` is not defined for the theme, experimenter has full autonomy within `max_files`/`max_lines`.
 - Recent experiment summaries (from 3e)
 - Focus files from harvest scan (from 3f), if any
 
 Do NOT include: metric names, benchmark definitions, scoring logic, tolerance/significance values, current scores, evaluate-config.json contents, or trust tier number.
+
+### Goodhart Guard (pre-spawn)
+
+Before dispatching, verify the experimenter prompt is clean:
+
+```
+If the prompt contains any of: "weight", "score", "metric", "keep_rate",
+"COLD_START", "FLOOR", numeric weight values, or evaluate-config.json contents
+→ ABORT: log "GOODHART VIOLATION: prompt contains scoring data" and halt session.
+```
+
+This is a hard check — a contaminated prompt means the Goodhart boundary has been breached.
 
 ### Dispatch
 
@@ -303,6 +316,7 @@ Write `experiments/state.json` after every experiment to enable crash recovery.
 
 ```
 experiment_count += 1
+→ execute 3o (theme fitness check)
 → go to 3a (TaskList will reveal the next pending experiment task)
 ```
 
