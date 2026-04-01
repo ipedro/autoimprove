@@ -29,11 +29,34 @@ The orchestrator picks improvement themes (failing tests, TODOs, coverage gaps),
 claude plugin marketplace add https://github.com/ipedro/autoimprove
 claude plugin install autoimprove
 
-# 1. Scaffold config for your project
+# 1. Inside your project, run:
 /autoimprove init
+```
 
-# 2. Run the improvement loop
-/autoimprove run
+`/autoimprove init` is interactive — it detects your project, runs your tests, and scaffolds everything:
+
+```
+autoimprove initialized for my-project (Node.js)
+
+Gates
+  [PASS] tests — npm test (42 tests, 0 failures)
+
+Metrics (baseline)
+  test_count: 42
+  todo_count: 7
+
+Files written:
+  autoimprove.yaml        ← your improvement strategy
+  benchmark/metrics.sh   ← measures test_count + todo_count
+
+Next step: /autoimprove run --experiments 3
+```
+
+You don't write a benchmark script — init generates one from your project. Then:
+
+```bash
+# 2. Run the improvement loop (3 trial experiments first)
+/autoimprove run --experiments 3
 
 # 3. See what happened
 /autoimprove report

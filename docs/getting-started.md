@@ -21,22 +21,38 @@ claude plugin install autoimprove
 
 **Local development:** If you're working inside the autoimprove repo, Claude Code auto-discovers `.claude-plugin/` — no install needed.
 
-After installing, run `/autoimprove-init` in your project directory. This scaffolds an `autoimprove.yaml` config file with sensible defaults. Edit it to wire up your gates, benchmarks, and themes. See [configuration.md](configuration.md) for the full schema.
+After installing, run `/autoimprove init` inside your project. This is an interactive command — it detects your project type, runs your test suite, and writes `autoimprove.yaml` and `benchmark/metrics.sh` for you. You don't need to write anything by hand to get started.
 
 ## Quick Start
 
 ```
-# 1. Scaffold the config
+# 1. Scaffold the config (interactive — detects your project automatically)
 /autoimprove init
 
-# 2. Edit autoimprove.yaml — add your gates and at least one benchmark
+# 2. Review autoimprove.yaml — init wrote it, but you can tune themes and priorities
+#    Not required for the first run.
 
-# 3. Run the improvement loop (default: 20 experiments)
-/autoimprove run
+# 3. Run a trial session (3 experiments is a good smoke test)
+/autoimprove run --experiments 3
 
 # 4. See what happened
 /autoimprove report
 ```
+
+### What is a benchmark?
+
+A benchmark is a script that measures your codebase and outputs a JSON object:
+
+```bash
+#!/usr/bin/env bash
+echo '{"test_count": 42, "todo_count": 7}'
+```
+
+autoimprove uses these numbers to decide whether to keep or discard each experiment. **If a metric gets worse, the experiment is thrown away.** If at least one improves and none regress, it's merged.
+
+`/autoimprove init` generates a working benchmark script automatically. The default metrics — `test_count` and `todo_count` — work for any project with a test suite. You can add custom metrics later by editing `benchmark/metrics.sh` and updating the `benchmarks:` section of `autoimprove.yaml`.
+
+**No benchmark = no grind loop.** You need at least one metric for the loop to score experiments.
 
 ### What happens during `/autoimprove run`
 

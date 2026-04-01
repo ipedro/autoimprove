@@ -66,12 +66,26 @@ Verify the command exists by running it briefly. Note whether tests pass or fail
 
 ## 4. Suggest Benchmarks
 
-Ask the user what they want to measure. Suggest project-specific options:
-- Test count (grep for test definitions)
-- TODO/FIXME count
-- Source lines of code
-- Test-to-code ratio
-- Custom benchmark scripts the user already has
+**Default to smart defaults — do not block on this question.**
+
+For any project with a test suite, the universal defaults work:
+- `test_count` — grep for test definitions in the test directory
+- `todo_count` — count TODO/FIXME in source files
+
+Proceed with these defaults unless the user specifically asks to customize. Do NOT ask an open-ended "what do you want to measure?" — that blocks users who don't know the answer.
+
+Only ask if the user has already indicated they want custom metrics (e.g., "I want to track coverage" or "I have my own benchmark script"). Present as a multiple-choice offer:
+
+```
+Benchmark defaults: test_count + todo_count (good for any project).
+Want to add anything?
+  1. Use defaults → proceed (recommended)
+  2. Add test coverage (requires lcov or coverage.json output)
+  3. Add source lines of code
+  4. I have a custom benchmark script already
+```
+
+If the project is a Claude Code plugin (`.claude-plugin/plugin.json` detected), add `skill_behavior_tests` as a third default if the project has any test scripts that count passing assertions.
 
 ## 5. Generate autoimprove.yaml
 
