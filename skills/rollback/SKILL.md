@@ -169,7 +169,7 @@ Would revert:
 Steps that would run:
   1. git revert --no-edit <TARGET_SHA>
   2. Update experiments/rolling-baseline.json
-  3. Update experiments/state.json (decrement consecutive_keeps)
+  3. Update experiments/state.json (decrement consecutive_keeps, re-evaluate trust_tier)
   4. Append rollback record to experiments/experiments.tsv
 
 No changes made. Remove --dry-run to proceed.
@@ -238,7 +238,16 @@ Baseline may be stale — run /autoimprove run to re-anchor it.
 
 # 11. Update State
 
-Read `experiments/state.json`. Decrement `consecutive_keeps` by 1 (floor at 0). Do NOT change `trust_tier` — a rollback does not retroactively demote the tier; the next regression in a live session will do that if warranted.
+Read `experiments/state.json`. Decrement `consecutive_keeps` by 1 (floor at 0).
+
+Then re-evaluate `trust_tier` based on the new `consecutive_keeps` value:
+
+```
+if trust_tier == 2 and consecutive_keeps < 15 → trust_tier = 1
+if trust_tier == 1 and consecutive_keeps < 5  → trust_tier = 0
+```
+
+A rollback voids the keep that earned the tier slot. If the new consecutive count no longer satisfies the tier's threshold, demote immediately — otherwise the next session will grant larger scope than the system has earned.
 
 Write the updated `experiments/state.json`.
 
@@ -269,7 +278,7 @@ Rolled back experiment <TARGET_ID>.
   Message:   <TARGET_MSG>
 
 Rolling baseline refreshed.
-State updated (consecutive_keeps: <new_value>).
+State updated (consecutive_keeps: <new_value>, trust_tier: <new_tier>).
 
 Run /autoimprove status to review the current state.
 ```

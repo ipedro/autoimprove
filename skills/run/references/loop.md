@@ -252,6 +252,21 @@ Increment the appropriate counter. For `neutral`: increment `theme_stagnation[TH
 <id>	<ISO timestamp>	<theme>	<verdict>	<improved or ->	<regressed or ->	<tokens or 0>	<wall_time>	<commit_msg or ->
 ```
 
+**Canonical verdict values for the TSV `verdict` column:**
+
+| Verdict | Source | Meaning |
+|---------|--------|---------|
+| `keep` | evaluate.sh | All gates passed, at least one metric improved |
+| `gate_fail` | evaluate.sh | Hard gate failed (tests broken, typecheck failed) |
+| `regress` | evaluate.sh | Benchmark regression beyond tolerance |
+| `neutral` | evaluate.sh or orchestrator | No changes made, or evaluate.sh found no delta |
+| `rebase_fail` | orchestrator (3j) | Merge conflict during keep rebase — change discarded |
+| `skipped_stagnated` | orchestrator (3b/3c) | Theme stagnated; experiment slot skipped |
+| `skipped_drift_halt` | orchestrator (3l) | Epoch drift threshold breached; session halted |
+| `rollback` | rollback skill | Manual revert of a previously kept experiment |
+
+Any TSV parser must handle all eight values without erroring or misclassifying.
+
 Write `experiments/<id>/context.json`:
 ```json
 {
