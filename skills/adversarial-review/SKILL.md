@@ -2,7 +2,7 @@
 name: adversarial-review
 description: "Run an adversarial Enthusiast→Adversary→Judge debate review on code. Automatically converges — no manual round control needed. Use when the user says 'adversarial review', 'debate review', 'run a review round', 'do a review round', 'review code with debate agents', 'i want an adversarial review', or '/autoimprove review'. Do NOT trigger on generic 'review' requests or PR reviews. Takes a file, diff, or PR as target."
 argument-hint: "[file|diff]"
-allowed-tools: [Read, Glob, Grep, Bash, Agent]
+allowed-tools: [Read, Glob, Grep, Bash, Agent, TodoWrite]
 ---
 
 <SKILL-GUARD>
@@ -73,6 +73,16 @@ Store `RUN_ID` and `RUN_DIR=~/.autoimprove/runs/<RUN_ID>` for use in later steps
 If the directory cannot be created (permissions, disk full), log a warning and continue —
 telemetry failure must never block the review.
 
+**Initialize progress todos** (always — even if telemetry folder failed):
+```
+TodoWrite([
+  {id: "enthusiast", content: "Enthusiast — surface findings", status: "pending"},
+  {id: "adversary",  content: "Adversary — challenge findings", status: "pending"},
+  {id: "judge",      content: "Judge — rule on debate",         status: "pending"}
+])
+```
+For round 2+, re-emit TodoWrite with all three reset to `pending` before starting the new round.
+
 ---
 
 # 3. Run Debate Rounds
@@ -92,6 +102,8 @@ Loop: run rounds until **deterministic convergence** is reached or `max_rounds` 
 For each round:
 
 ## 3a. Spawn Enthusiast
+
+Mark progress: `TodoWrite([{id: "enthusiast", content: "Enthusiast — surface findings", status: "in_progress"}, ...])`  (keep adversary + judge as pending).
 
 Use the Agent tool to spawn the `autoimprove:enthusiast` agent (`subagent_type: "autoimprove:enthusiast"`):
 
@@ -117,6 +129,8 @@ Dispatch the Enthusiast synchronously and wait for the full response before disp
 
 ## 3b. Spawn Adversary
 
+Mark progress: `TodoWrite([{id: "enthusiast", ..., status: "completed"}, {id: "adversary", content: "Adversary — challenge findings", status: "in_progress"}, {id: "judge", ..., status: "pending"}])`.
+
 Use the Agent tool to spawn the `autoimprove:adversary` agent (`subagent_type: "autoimprove:adversary"`):
 
 ```
@@ -140,6 +154,8 @@ Only start this step after `ENTHUSIAST_OUTPUT` is fully available. Pass the full
 - If invalid JSON → re-prompt once with the same correction instruction. If still invalid → log `adversary_malformed_json`, pass `{"verdicts": []}` as the adversary input to the Judge (all findings treated as uncontested via Judge's missing-verdicts edge case).
 
 ## 3c. Spawn Judge
+
+Mark progress: `TodoWrite([{id: "enthusiast", ..., status: "completed"}, {id: "adversary", ..., status: "completed"}, {id: "judge", content: "Judge — rule on debate", status: "in_progress"}])`.
 
 Use the Agent tool to spawn the `autoimprove:judge` agent (`subagent_type: "autoimprove:judge"`):
 
@@ -168,6 +184,8 @@ Only start this step after both `ENTHUSIAST_OUTPUT` and `ADVERSARY_OUTPUT` are c
 **Validate output**: Parse the Judge's response as JSON.
 - If valid JSON with a `rulings` array → store as `JUDGE_OUTPUT` and continue.
 - If invalid JSON → re-prompt once. If still invalid → log `judge_malformed_json`, record all findings as `status: unresolved`, and end the debate loop.
+
+After storing `JUDGE_OUTPUT`, mark: `TodoWrite([{id: "enthusiast", ..., status: "completed"}, {id: "adversary", ..., status: "completed"}, {id: "judge", ..., status: "completed"}])`.
 
 ## 3d. Check Convergence
 
