@@ -141,7 +141,7 @@ On `--resume` or when starting a new session after a crash:
 
 ## Constraints
 
-- **Max 5 concurrent subagents** per UNBREAKABLE_RULES S3.
+- **Serial execution only.** The sequential chain enforces one experiment in_progress at a time. Never dispatch multiple experiments concurrently.
 - **experiments.tsv is always updated before marking a task completed.** The TSV is the durable record; the task metadata is supplementary.
 - **Experimenter blindness is preserved.** Task descriptions and metadata visible to the experimenter MUST NOT contain metric names, scores, benchmark definitions, or evaluation config. Only: theme name, file constraints, forbidden paths, test policy, recent history summaries, and focus files.
 - **TaskTree is ephemeral.** It exists for the duration of a Claude Code session. Cross-session history lives in experiments.tsv and state.json only.

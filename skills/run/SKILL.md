@@ -250,11 +250,13 @@ TaskUpdate(taskId: SETUP_TASK_ID, status: "completed", metadata: {baseline_sha: 
 
 Pre-create all experiment tasks so the full session plan is visible and crash-recoverable.
 
+Initialize `PREV_TASK_ID = SETUP_TASK_ID`.
+
 For each experiment slot `i` from 1 to `max_experiments_per_session` (or `--experiments N` override):
 
 1. **Select theme:** Run `theme-weights.sh` (step 3c logic). If `--theme THEME` was passed, use it for all slots. Apply stagnation and cooldown filters — skip slots where no eligible theme exists.
 2. **Assign experiment ID:** Next available zero-padded ID from experiments.tsv.
-3. **Create the task:**
+3. **Create the task and chain it to the previous one (setup for exp-001, previous experiment for exp-002+):**
 
 ```
 TaskCreate(
@@ -263,14 +265,15 @@ TaskCreate(
   activeForm: "Running experiment <id>",
   metadata: {exp_id: "<id>", theme: "<theme>", phase: "experiment"}
 )
-→ store returned task ID
+→ store returned task ID as <exp_task_id>
 
-TaskUpdate(taskId: <exp_task_id>, addBlockedBy: [SETUP_TASK_ID])
+TaskUpdate(taskId: <exp_task_id>, addBlockedBy: [PREV_TASK_ID])
+PREV_TASK_ID = <exp_task_id>
 ```
 
 4. **Collect** all experiment task IDs into `EXPERIMENT_TASK_IDS` array.
 
-After all experiment tasks are created, create the report task:
+After all experiment tasks are created, create the report task blocked on the **last** experiment only (which transitively depends on all prior experiments):
 
 ```
 TaskCreate(
@@ -281,7 +284,7 @@ TaskCreate(
 )
 → store returned task ID as REPORT_TASK_ID
 
-TaskUpdate(taskId: REPORT_TASK_ID, addBlockedBy: EXPERIMENT_TASK_IDS)
+TaskUpdate(taskId: REPORT_TASK_ID, addBlockedBy: [PREV_TASK_ID])
 ```
 
 If zero experiment tasks were created (all themes stagnated/on cooldown), skip directly to Session End.
