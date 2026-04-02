@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>idea-matrix</title>
+<style>
+  :root {
+    --bg:      #0d1117;
+    --surface: #161b22;
+    --border:  #30363d;
+    --text:    #c9d1d9;
+    --muted:   #8b949e;
+    --blue:    #58a6ff;
+    --green:   #3fb950;
+    --red:     #f85149;
+    --yellow:  #d29922;
+    --purple:  #bc8cff;
+    --font:    'SF Mono','Fira Code','Cascadia Code',monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; line-height: 1.6; padding: 32px; }
+
+  /* header */
+  .header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 28px; }
+  .header-title { font-size: 11px; color: var(--blue); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .header-problem { font-size: 16px; font-weight: 700; color: var(--text); line-height: 1.4; max-width: 800px; }
+
+  /* winner banner */
+  .winner-banner {
+    background: #1a3a23;
+    border: 1px solid var(--green);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .winner-label { color: var(--green); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .winner-name  { color: var(--text); font-size: 15px; font-weight: 700; }
+  .winner-score { color: var(--green); font-size: 24px; font-weight: 700; line-height: 1; }
+  .winner-score span { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .confidence-badge {
+    padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-left: auto;
+  }
+  .confidence-clear    { background: #1a3a23; color: var(--green); border: 1px solid var(--green); }
+  .confidence-moderate { background: #3a2e0a; color: var(--yellow); border: 1px solid var(--yellow); }
+  .confidence-narrow   { background: #21262d; color: var(--muted); border: 1px solid var(--border); }
+  .confidence-none     { background: #21262d; color: var(--muted); border: 1px solid var(--border); }
+
+  /* 3×3 grid */
+  .grid-section { margin-bottom: 24px; }
+  .section-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+    margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after { content:''; flex:1; height:1px; background: var(--border); }
+
+  .matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .cell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    position: relative;
+    transition: border-color 0.15s;
+    cursor: default;
+  }
+  .cell.winner { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
+  .cell.dealbreaker { border-color: var(--red); opacity: 0.7; }
+
+  .cell-number { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+  .cell-label  { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px; line-height: 1.3; min-height: 32px; }
+  .cell-avg    { font-size: 22px; font-weight: 700; line-height: 1; margin-bottom: 8px; }
+  .cell-bars   { display: flex; flex-direction: column; gap: 3px; }
+  .dim-row     { display: flex; align-items: center; gap: 5px; }
+  .dim-name    { font-size: 9px; color: var(--muted); width: 52px; flex-shrink: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+  .dim-track   { flex: 1; height: 3px; background: #21262d; border-radius: 2px; overflow: hidden; }
+  .dim-fill    { height: 100%; border-radius: 2px; }
+  .dim-val     { font-size: 9px; color: var(--muted); width: 10px; text-align: right; }
+  .winner-crown { position: absolute; top: 10px; right: 10px; font-size: 14px; }
+  .cell-verdict { font-size: 10px; color: var(--muted); margin-top: 8px; line-height: 1.3; }
+
+  /* color by score 1-5 */
+  .score-1 .cell-avg { color: #f85149; }
+  .score-2 .cell-avg { color: #d08700; }
+  .score-3 .cell-avg { color: var(--muted); }
+  .score-4 .cell-avg { color: #5cb85c; }
+  .score-5 .cell-avg { color: var(--green); }
+
+  /* dimension color */
+  .dim-fill { background: var(--blue); }
+  .cell.winner .dim-fill { background: var(--green); }
+
+  /* winner detail */
+  .winner-detail {
+    background: var(--surface);
+    border: 1px solid var(--green);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .dim-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 14px; }
+  .dim-card { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+  .dim-card-name  { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .dim-card-track { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; margin-bottom: 4px; }
+  .dim-card-fill  { height: 100%; background: var(--green); border-radius: 3px; }
+  .dim-card-val   { font-size: 18px; font-weight: 700; color: var(--green); }
+
+  /* devil's advocate */
+  .devil-box {
+    background: #1a1a2e;
+    border: 1px solid #444488;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+  }
+  .devil-title   { color: #9999ff; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .devil-failure { color: var(--text); font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .devil-scenario { color: var(--muted); font-size: 12px; margin-bottom: 10px; line-height: 1.5; }
+  .devil-meta    { display: flex; gap: 16px; font-size: 11px; }
+  .devil-prob    { color: var(--muted); }
+  .devil-prob span { color: var(--yellow); }
+  .devil-verdict { color: var(--muted); }
+  .devil-verdict span { color: var(--green); }
+  .devil-mitigations { margin-top: 10px; }
+  .devil-mit-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .devil-mit-item  { font-size: 11px; color: var(--muted); padding-left: 12px; position: relative; line-height: 1.5; }
+  .devil-mit-item::before { content: '→'; position: absolute; left: 0; color: #9999ff; }
+
+  /* insights */
+  .insights { display: flex; flex-direction: column; gap: 8px; }
+  .insight  { display: flex; gap: 10px; align-items: flex-start; font-size: 12px; color: var(--text); }
+  .insight::before { content: '💡'; flex-shrink: 0; }
+
+  /* narrow win */
+  .narrow-box {
+    background: #21262d; border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; margin-bottom: 24px; font-size: 12px; color: var(--muted);
+  }
+  .narrow-box strong { color: var(--yellow); }
+
+  .footer { color: var(--muted); font-size: 11px; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const DATA = __DATA_PLACEHOLDER__;
+
+const DIM_LABELS = {
+  feasibility:         'Feas.',
+  risk:                'Risk',
+  synergy_potential:   'Synrg.',
+  implementation_cost: 'Cost'
+};
+
+function scoreClass(avg) {
+  const n = Math.round(avg);
+  return `score-${Math.min(5, Math.max(1, n))}`;
+}
+
+function confidenceClass(vt) {
+  if (vt === 'clear')        return 'clear';
+  if (vt === 'moderate')     return 'moderate';
+  if (vt === 'narrow_win')   return 'narrow';
+  return 'none';
+}
+
+function confidenceLabel(vt, margin) {
+  const m = margin != null ? ` (margin ${margin.toFixed(2)})` : '';
+  if (vt === 'clear')        return `Clear win${m}`;
+  if (vt === 'moderate')     return `Moderate${m}`;
+  if (vt === 'narrow_win')   return `Narrow win${m}`;
+  return 'No clear winner';
+}
+
+function render() {
+  const d = DATA;
+  const cells  = d.cells  || [];
+  const winner = cells.find(c => c.cell === (d.winner?.cell));
+  const vtype  = d.verdict_type || 'clear';
+
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="header">
+      <div class="header-title">⚡ idea-matrix</div>
+      <div class="header-problem">${d.problem || '—'}</div>
+    </div>
+
+    ${winner ? `
+    <div class="winner-banner">
+      <div>
+        <div class="winner-label">Winner</div>
+        <div class="winner-name">${winner.label}</div>
+      </div>
+      <div class="winner-score">${(winner.avg||0).toFixed(2)}<span>/5</span></div>
+      <div class="confidence-badge confidence-${confidenceClass(vtype)}">
+        ${confidenceLabel(vtype, d.confidence_margin)}
+      </div>
+    </div>` : ''}
+
+    ${vtype === 'narrow_win' && d.runner_up ? `
+    <div class="narrow-box">
+      <strong>Narrow win</strong> — margin too small to distinguish decisively.
+      Runner-up: <strong>${d.runner_up.label}</strong> (${(d.runner_up.avg||0).toFixed(2)}/5).
+      Consider additional constraints before committing.
+    </div>` : ''}
+
+    <div class="grid-section">
+      <div class="section-title">Score grid</div>
+      <div class="matrix-grid">
+        ${cells.map(c => {
+          const isWinner = c.cell === d.winner?.cell;
+          const dims = c.scores || {};
+          return `
+          <div class="cell ${scoreClass(c.avg||0)} ${isWinner?'winner':''} ${c.dealbreaker?'dealbreaker':''}">
+            ${isWinner ? '<div class="winner-crown">🏆</div>' : ''}
+            <div class="cell-number">#${c.cell}</div>
+            <div class="cell-label">${c.label || '—'}</div>
+            <div class="cell-avg">${(c.avg||0).toFixed(2)}</div>
+            <div class="cell-bars">
+              ${Object.entries(dims).map(([k,v]) => `
+              <div class="dim-row">
+                <div class="dim-name">${DIM_LABELS[k]||k}</div>
+                <div class="dim-track"><div class="dim-fill" style="width:${((v||0)/5)*100}%"></div></div>
+                <div class="dim-val">${v}</div>
+              </div>`).join('')}
+            </div>
+            ${c.dealbreaker ? '<div class="cell-verdict" style="color:var(--red)">⛔ Dealbreaker</div>' : ''}
+            ${c.verdict ? `<div class="cell-verdict">${c.verdict}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    ${winner ? `
+    <div class="winner-detail">
+      <div class="section-title" style="margin-bottom:8px">Winner detail · ${winner.label}</div>
+      <div style="color:var(--muted);font-size:12px">${winner.thesis || ''}</div>
+      <div class="dim-grid">
+        ${Object.entries(winner.scores||{}).map(([k,v]) => `
+        <div class="dim-card">
+          <div class="dim-card-name">${k.replace(/_/g,' ')}</div>
+          <div class="dim-card-track"><div class="dim-card-fill" style="width:${(v/5)*100}%"></div></div>
+          <div class="dim-card-val">${v}<span style="font-size:12px;color:var(--muted)">/5</span></div>
+        </div>`).join('')}
+      </div>
+      ${winner.recommendation ? `
+      <div style="margin-top:14px;font-size:12px;color:var(--muted)">
+        <span style="color:var(--green)">First step →</span> ${winner.recommendation}
+      </div>` : ''}
+    </div>` : ''}
+
+    ${d.devil_advocate ? `
+    <div class="devil-box">
+      <div class="devil-title">⚔️ Devil's advocate</div>
+      <div class="devil-failure">${d.devil_advocate.failure_mode || d.devil_advocate.challenge || '—'}</div>
+      <div class="devil-scenario">${d.devil_advocate.scenario || d.devil_advocate.evidence || ''}</div>
+      <div class="devil-meta">
+        <div class="devil-prob">Probability: <span>${d.devil_advocate.probability || '—'}</span></div>
+        <div class="devil-verdict">Verdict: <span>${d.devil_advocate.verdict || '—'}</span></div>
+      </div>
+      ${(d.devil_advocate.mitigations||[]).length ? `
+      <div class="devil-mitigations">
+        <div class="devil-mit-title">Mitigations</div>
+        ${(d.devil_advocate.mitigations||[]).map(m => `<div class="devil-mit-item">${m}</div>`).join('')}
+      </div>` : ''}
+    </div>` : ''}
+
+    ${(d.top_insights||[]).length ? `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:24px">
+      <div class="section-title">Top insights</div>
+      <div class="insights">
+        ${(d.top_insights||[]).map(i => `<div class="insight">${i}</div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <div class="footer">generated by idea-matrix</div>
+  `;
+}
+render();
+</script>
+</body>
+</html>

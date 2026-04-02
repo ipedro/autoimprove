@@ -470,10 +470,73 @@ Populate honestly — this data feeds model-selection calibration.
 
 ---
 
-# 7. Notes
+# 7. Visual Digest (optional)
+
+After the convergence report, offer a visual digest:
+
+```
+Visual digest? [Y/n]
+```
+
+If yes (or Enter), build the DATA object and open a self-contained HTML dashboard:
+
+**DATA object** — assembled from results already in memory:
+
+```javascript
+const DATA = {
+  problem:           "<PROBLEM>",
+  verdict_type:      "<clear|moderate|narrow_win|no_clear_winner>",
+  confidence_margin: <winner_composite - runner_up_composite>,
+  winner: { cell: <N>, label: "<label>", avg: <score> },
+  runner_up: { cell: <N>, label: "<label>", avg: <score> },  // only for narrow_win
+
+  cells: [
+    {
+      cell:        <1-9>,
+      label:       "<plain-language label>",    // the intention-first label from TodoWrite
+      avg:         <composite avg>,
+      scores: {
+        feasibility:         <1-5>,
+        risk:                <1-5>,
+        synergy_potential:   <1-5>,
+        implementation_cost: <1-5>
+      },
+      dealbreaker: <true|false>,
+      thesis:      "<one-sentence thesis from agent>",
+      verdict:     "<agent's one-sentence verdict>",
+      recommendation: "<first implementation step if this wins>"
+    },
+    ...  // all 9 cells
+  ],
+
+  devil_advocate: {
+    failure_mode: "<one-sentence failure mode>",
+    scenario:     "<2-3 sentence scenario>",
+    probability:  "<low|medium|high>",
+    mitigations:  ["<mitigation 1>", "<mitigation 2>"],
+    verdict:      "<still_recommend|reconsider|reject>"
+  },
+
+  top_insights: ["<insight 1>", "<insight 2>", "<insight 3>"]  // from 6d top insights
+};
+```
+
+**Generate and open:**
+
+1. Read `skills/idea-matrix/digest-template.html` (path relative to the plugin root, or use absolute path).
+2. Replace `__DATA_PLACEHOLDER__` with `JSON.stringify(DATA)`.
+3. Write result to a temp file: `/tmp/idea-matrix-<timestamp>.html`.
+4. Run: `open /tmp/idea-matrix-<timestamp>.html`
+
+Skip this step entirely if the user declines or if `--brief` mode is active (brief mode is for pipeline handoff, not interactive review).
+
+---
+
+# 8. Notes
 
 - **9 agents is the fixed grid.** The 3x3 structure (3 solo + 3 pairs + 1 trio + 2 wild) is the core design.
 - **Haiku only, no tools.** Agents reason about pre-digested context. The orchestrator does the codebase research.
 - **Scores enable objective comparison.** Numerical rubric eliminates ambiguity in prose-based assessments.
 - **The convergence report is the deliverable.** Lead with the synthesis and recommendation, not the raw scores.
 - **Works standalone or during brainstorming.** Can be invoked via `/idea-matrix` at any point — enriches design discussions or produces standalone analysis.
+- **Visual digest is skipped in --brief mode.** Brief mode is a pipeline handoff — no interactive UI needed.
