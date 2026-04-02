@@ -39,6 +39,8 @@ THEME = next_task.metadata.theme
 EXP_ID = next_task.metadata.exp_id
 ```
 
+If `THEME == "user_goal"` and `next_task.metadata.goal_name` is present, treat it as a goal slot. Goal slots bypass theme cooldown/stagnation checks and proceed directly to 3d.
+
 If the theme is now on cooldown or stagnated (state changed during this session), skip it:
 ```
 TaskUpdate(taskId: next_task.id, status: "completed", metadata: {verdict: "skipped_stagnated"})
@@ -82,6 +84,8 @@ FOCUS=$(bash scripts/harvest-themes.sh "$THEME" "$PROJECT_ROOT")
 
 `FOCUS` is a newline-separated list of JSON objects: `{"path":"...","reason":"..."}`.
 
+If `THEME == "user_goal"`, skip the harvest scan and leave `FOCUS` empty unless the task already carries explicit focus hints. Goal slots are scheduled from user priority, not theme-harvest suggestions.
+
 If `FOCUS` is non-empty, extract the file paths and include them in the experimenter prompt as:
 ```
 Focus on these files (structural reasons provided):
@@ -114,6 +118,7 @@ Include:
 - Forbidden paths from `constraints.forbidden_paths`
 - Test modification policy from `constraints.test_modification`
 - Scope constraint from `focus_paths[THEME]` in `autoimprove.yaml` (if defined): list the paths/globs as "Only modify files matching: <paths>". If `focus_paths` is not defined for the theme, experimenter has full autonomy within `max_files`/`max_lines`.
+- If `next_task.metadata.goal_name` is set, include a qualitative goal hint derived from that name, but strip raw metric identifiers, operators, and numeric thresholds before adding it to the prompt.
 - Recent experiment summaries (from 3e)
 - Focus files from harvest scan (from 3f), if any
 
@@ -125,7 +130,8 @@ Before dispatching, verify the experimenter prompt is clean:
 
 ```
 If the prompt contains any of: "weight", "score", "metric", "keep_rate",
-"COLD_START", "FLOOR", numeric weight values, or evaluate-config.json contents
+"COLD_START", "FLOOR", "target_metric", "target_delta", numeric weight values,
+or evaluate-config.json contents
 → ABORT: log "GOODHART VIOLATION: prompt contains scoring data" and halt session.
 ```
 
@@ -244,6 +250,24 @@ Increment the appropriate counter. For `neutral`: increment `theme_stagnation[TH
    Spawn the review agents using the `review` skill on this diff (pass as `TARGET_CODE` directly — no need to re-parse arguments). Use `--rounds` auto-scaled to the diff size. Store the structured JSON output as `DEBATE_ANNOTATION`.
 
    If the review fails or times out, set `DEBATE_ANNOTATION = null`. Never let a failed review block the loop.
+
+8. **Goal achievement check (after every `keep` verdict):** If `next_task.metadata.goal_name` is set, treat the keep as a goal-slot result.
+
+   1. Read the candidate value for `next_task.metadata.target_metric` from the current `evaluate.sh` output (`metrics.<target_metric>.candidate`).
+   2. Read `experiments/state.json` and find the matching goal by `goal_name`. If the goal is already missing or not active/achieved anymore, log a warning and skip the achievement check.
+   3. Read the epoch baseline value for the same metric from `experiments/epoch-baseline.json`. If the metric is missing there, log a warning and skip the achievement check.
+   4. Compute achievement against the epoch baseline:
+      - `-20%` style deltas are achieved when `(candidate - epoch) / epoch <= -0.20`
+      - `+10%` style deltas are achieved when `(candidate - epoch) / epoch >= 0.10`
+      - `≥N` or `>=N` goals are achieved when `candidate >= N`
+      - `≤N` or `<=N` goals are achieved when `candidate <= N`
+   5. If achieved:
+      - Set `status: "achieved"` on the goal in `experiments/state.json`
+      - Log `[GOAL_ACHIEVED: <goal_name> — <target_metric> reached <target_delta>]`
+      - Print `Goal achieved: <goal_name> (<target_metric> → <target_delta>)`
+      - Write the updated `experiments/state.json`
+
+Achieved goals are excluded from future slot allocation because step 2i only schedules goals where `status == "active"`.
 
 ## 3k. Log Experiment
 

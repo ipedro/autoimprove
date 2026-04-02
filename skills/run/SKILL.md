@@ -291,11 +291,44 @@ Pre-create all experiment tasks so the full session plan is visible and crash-re
 
 Initialize `PREV_TASK_ID = SETUP_TASK_ID`.
 
-For each experiment slot `i` from 1 to `max_experiments_per_session` (or `--experiments N` override):
+**Goal slot injection (B+C model):**
 
-1. **Select theme:** Run `theme-weights.sh` (step 3c logic). If `--theme THEME` was passed, use it for all slots. Apply stagnation and cooldown filters — skip slots where no eligible theme exists.
+Before filling experiment slots with auto-selected themes, inject goal slots:
+
+1. Read `experiments/state.json goals[]`. Filter goals where `status == "active"`.
+   - If a goal has `needs_validation: true`, re-run the configured benchmark commands from `autoimprove.yaml`.
+   - If the goal's `target_metric` appears in the benchmark output, clear `needs_validation`.
+   - If the key is still missing, mark the goal `status: "stale"`, warn the user, and skip it for this session.
+2. Compute `floor_slots`: read `autoimprove.yaml goals.floor_slots` (default: 2). Cap at `min(floor_slots, active_goal_count, max_experiments_per_session)`.
+3. For each floor slot, pick the next active goal in round-robin order with higher `priority_weight` goals first. Create a goal experiment task:
+
+```
+TaskCreate(
+  subject: "Experiment <id>: [goal] <target_metric> → <target_delta>",
+  description: "Goal experiment. target_metric: <target_metric>, target_delta: <target_delta>.",
+  activeForm: "Running goal experiment <id>",
+  metadata: {
+    exp_id: "<id>",
+    theme: "user_goal",
+    goal_name: "<name>",
+    target_metric: "<target_metric>",
+    target_delta: "<target_delta>",
+    phase: "experiment"
+  }
+)
+```
+
+4. Remaining slots (`max_experiments_per_session - floor_slots`) fall back to normal theme selection, but inject active goals into the weighted pool with `priority_weight × 3` weight on top of the existing `theme-weights.sh` scores.
+5. Persist any goal validation updates (`needs_validation` cleared, `status: "stale"`) back to `experiments/state.json` before entering the loop so crash recovery and later skills see the same state.
+
+After floor-slot tasks are created, fill the remaining experiment slots until the session budget is exhausted:
+
+1. **Select next slot target:** If `--theme THEME` was passed, use it for every non-goal slot. Otherwise run `theme-weights.sh` (step 3c logic), merge the active goals into that pool with their `priority_weight × 3` boost, then apply stagnation and cooldown filters to theme entries only. Goal entries remain eligible unless their own `status` changed away from `active`. Skip slots where no eligible theme or goal remains.
 2. **Assign experiment ID:** Next available zero-padded ID from experiments.tsv.
 3. **Create the task and chain it to the previous one (setup for exp-001, previous experiment for exp-002+):**
+
+   - If the selected pool entry is a goal, use the goal-task shape from the floor-slot example (`theme: "user_goal"` plus `goal_name`, `target_metric`, and `target_delta` metadata). Weighted-pool goal picks use the same task shape as guaranteed floor slots so later loop steps can detect achievements consistently.
+   - Otherwise create the standard theme task:
 
 ```
 TaskCreate(
