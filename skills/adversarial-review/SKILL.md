@@ -65,7 +65,7 @@ mkdir -p ~/.autoimprove/runs/<RUN_ID>
   "rounds_completed": 0,
   "converged_at_round": null,
   "status": "running",
-  "model": "claude-sonnet-4-6"
+  "model": "claude-haiku-4-5-20251001"
 }
 ```
 
@@ -324,7 +324,7 @@ After formatting output, finalize the run folder (if `RUN_DIR` is set).
     "rounds_planned": <N>,
     "rounds_completed": <actual>,
     "converged_at_round": <N or null>,
-    "model": "claude-sonnet-4-6",
+    "model": "claude-haiku-4-5-20251001",
     "judge_llm_convergence_mismatches": <count of rounds where judge said converged but deterministic check disagreed>
   },
   "rounds": [ <ROUNDS array> ],
@@ -350,7 +350,7 @@ After formatting output, finalize the run folder (if `RUN_DIR` is set).
   "rounds_completed": <actual>,
   "converged_at_round": <N or null>,
   "status": "complete",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-haiku-4-5-20251001",
   "total_findings": <confirmed + debunked>,
   "confirmed": <count>,
   "debunked": <count>,
@@ -434,7 +434,7 @@ Populate each field honestly:
 Also persist the self-assessment in `$RUN_DIR/meta.json` under a `self_assessment` key:
 ```json
 "self_assessment": {
-  "model_used": "sonnet",
+  "model_used": "haiku",
   "cheaper_model_score": 2,
   "reason": "Small config diff with no architectural complexity."
 }
@@ -455,7 +455,7 @@ If the CALLER wants non-blocking AR from outside:
 - Do NOT specify `subagent_type: autoimprove:adversarial-review` — that agent type does not exist
 - Do NOT nest background agents inside background agents (causes silent failures)
 
-- Each agent is spawned with `model: sonnet` for cost efficiency.
+- Each agent is spawned with `model: haiku` by default. Override with `model: sonnet` for complex multi-file reviews or security-sensitive code.
 - The review skill NEVER influences keep/discard decisions in the autoimprove loop. It is advisory only.
 - Total token budget: the orchestrator should track approximate token usage. If approaching session limits, warn the user.
 - **Sparse-output detection:** A model returning ≤ 50 characters of valid JSON on the first round is a strong signal of silent failure or context-window truncation — not a genuine "no findings" result. The re-prompt in 3a is the only recovery mechanism. If after retry the output is still sparse, warn the user: `"Warning: Enthusiast returned suspiciously short output — findings may be incomplete."` This warning appears in the final output alongside any `malformed_json` warnings.
