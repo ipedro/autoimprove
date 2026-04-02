@@ -40,6 +40,8 @@ Target is: file path, glob, or `"diff"`.
 - File/glob: use Read/Glob, concatenate with `=== {filepath} ===` headers.
 - Diff: `git diff HEAD` (fallback: `git diff --staged`). If empty: stop and inform user.
 
+After resolving the target, store `TARGET_PATH` when there is a concrete file path; for diff or ambiguous glob-only targets, leave `TARGET_PATH = null`.
+
 Store as `TARGET_CODE`. If empty: stop — nothing to review.
 
 ---
@@ -67,10 +69,48 @@ CONFIRMED_LOCATIONS = []   # (file, line) tuples from enthusiast/split rulings
 PRIOR_JUDGE_OUTPUT = null
 PRIOR_JUDGE_SUMMARY = null
 ROUND_YIELDS = []
+TARGET_TYPE = "code"
+CONTEXT_BRIEF = ""
+AGENT_ENTHUSIAST = "autoimprove:enthusiast"
+AGENT_ADVERSARY = "autoimprove:adversary"
+AGENT_JUDGE = "autoimprove:judge"
 ROUND_MODEL = "haiku"
 MODEL_LADDER = ["haiku", "sonnet", "opus"]
 converged = false
 ```
+
+## Target Type Detection
+
+After resolving `TARGET_PATH`:
+- If `TARGET_PATH` ends with `.md` AND (contains `"Implementation Plan"` OR `"Spec"` OR `"Design"` OR `"Plan"` in its first 20 lines OR is explicitly in a `docs/superpowers/` path): set `TARGET_TYPE = "spec"`
+- Otherwise: set `TARGET_TYPE = "code"`
+
+```
+AGENT_ENTHUSIAST = TARGET_TYPE == "spec" ? "autoimprove:enthusiast-spec" : "autoimprove:enthusiast"
+AGENT_ADVERSARY  = TARGET_TYPE == "spec" ? "autoimprove:adversary-spec"  : "autoimprove:adversary"
+AGENT_JUDGE      = TARGET_TYPE == "spec" ? "autoimprove:judge-spec"       : "autoimprove:judge"
+ROUND_MODEL      = TARGET_TYPE == "spec" ? "sonnet"                       : "haiku"
+```
+
+If detection fails or the target is not a concrete markdown spec, keep the default `"code"` behavior.
+
+## Step 2b — Compile Pre-digest Brief (~2KB)
+
+After loading `TARGET_CODE`, compile a brief from the content already in memory and store it as `CONTEXT_BRIEF`.
+
+For `TARGET_TYPE == "code"`:
+- List all exported functions/types (first line of each)
+- Note imports and dependencies
+- Note any `TODO` / `FIXME` comments
+- Result target: about 500 tokens
+
+For `TARGET_TYPE == "spec"`:
+- Extract all `##` headings (section map)
+- Extract the first sentence of each section
+- Note any `Phase N`, `Future`, `TODO`, `Will add`, or `will be implemented` planned-work markers
+- Result target: about 500 tokens
+
+Do not replace `TARGET_CODE`; this brief is additive and exists only to orient agents before they read the full code/spec.
 
 **Init todos:**
 ```
@@ -103,9 +143,10 @@ Extract `(file, line)` from all prior rulings where `winner` = `"enthusiast"` or
 **Dispatch — use EXACTLY this Agent call:**
 ```
 Agent(
-  subagent_type: "autoimprove:enthusiast",
+  subagent_type: AGENT_ENTHUSIAST,
   model: ROUND_MODEL,
   prompt: "[AR Round {ROUND} — {MODE}] Review the code below. Output ONLY valid JSON per your schema.
+<brief>{CONTEXT_BRIEF}</brief>
 <code>{TARGET_CODE}</code>
 {IF round>1: "BLOCKLIST (do not re-raise): {CONFIRMED_LOCATIONS}\nPrior summary: {PRIOR_JUDGE_SUMMARY}\nFind issues NOT in the blocklist only."}"
 )
@@ -139,9 +180,10 @@ Mark todo: `{id: "adversary", content: "⚔️ AR Round {ROUND}: Adversary — c
 **Dispatch — use EXACTLY this Agent call:**
 ```
 Agent(
-  subagent_type: "autoimprove:adversary",
+  subagent_type: AGENT_ADVERSARY,
   model: ROUND_MODEL,
   prompt: "[AR Round {ROUND} — {MODE}] Challenge the findings. Output ONLY valid JSON per your schema.
+<brief>{CONTEXT_BRIEF}</brief>
 <code>{TARGET_CODE}</code>
 <findings>{ENTHUSIAST_OUTPUT with NOVEL_FINDINGS only}</findings>
 Healthy challenge rate: 15–25%. Validating 100% without pushback = insufficient scrutiny."
@@ -168,9 +210,10 @@ Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — ruling on
 **Dispatch — use EXACTLY this Agent call:**
 ```
 Agent(
-  subagent_type: "autoimprove:judge",
+  subagent_type: AGENT_JUDGE,
   model: ROUND_MODEL,
   prompt: "[AR Round {ROUND} — {MODE}] Arbitrate. Output ONLY valid JSON per your schema.
+<brief>{CONTEXT_BRIEF}</brief>
 <code>{TARGET_CODE}</code>
 <findings>{ENTHUSIAST_OUTPUT}</findings>
 <verdicts>{ADVERSARY_OUTPUT}</verdicts>
@@ -235,6 +278,20 @@ if converged OR near_convergence:
     Log: "Round {N}: escalating to {next_model} (yield={current_yield})"
     Re-emit todos as pending for round {N+1}
 ```
+
+## Round 2 Gate (after Round 1 only)
+
+After Round 1 Judge output, before incrementing `ROUND`:
+- Count confirmed findings: `confirmed_count = rulings where winner ∈ {enthusiast, split}`
+- Count medium+ findings: `medium_plus = confirmed findings where final_severity ∈ {medium, high, critical}`
+
+If `confirmed_count < 3` OR `medium_plus == 0`:
+- Log: `"round2_skipped: confirmed={confirmed_count}, medium+={medium_plus} — below threshold"`
+- Skip to final report: exit the loop and go directly to STEP 4
+
+Otherwise, proceed to Round 2 normally.
+
+Note: This gate applies ONLY after Round 1. Rounds 2+ always proceed if the Judge says not converged.
 
 **Increment:** `ROUND += 1`.
 
