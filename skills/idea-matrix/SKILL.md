@@ -20,7 +20,7 @@ description: |
   assistant: I'll use idea-matrix to generate a convergence report across all three strategies.
   <commentary>"Convergence report" is a direct trigger phrase.</commentary>
   </example>
-argument-hint: "<problem statement> + <options list>"
+argument-hint: "<problem statement> + <options list> [--brief]"
 allowed-tools: [Read, Glob, Grep, Bash, Agent, TodoWrite]
 ---
 
@@ -38,6 +38,7 @@ From the user's input (or the current conversation context), extract:
 
 - **problem**: The design problem or decision being explored
 - **options**: A list of design options (minimum 3). Each option has a short label and a description.
+- **brief_mode**: `true` if `--brief` flag is present, `false` otherwise. In brief mode, skip the full score table and dimension aggregates — output only the winner summary (see step 6).
 
 If the user provided options inline (e.g., "A: hooks, B: skill, C: stop hook"), use those directly.
 
@@ -364,6 +365,28 @@ Output as JSON:
 ```
 
 Parse the response. If valid: add as `"devil_advocate"` to the convergence report under the winner section. If malformed: skip silently. Mark: `TodoWrite([{id: "devil", status: "completed"}])`.
+
+**6d.6. Brief Mode Output (`--brief`)**
+
+If `brief_mode` is true, replace the full report (6a–6d) with this compact block and skip 6e:
+
+```
+## Idea Matrix — {PROBLEM}
+
+Winner: {WINNER_LABEL} — {WINNER_DESCRIPTION}
+Confidence: {clear|moderate|narrow}  (margin: {confidence_margin:.2f})
+Why it won: {2 sentences from synthesis — cite specific score patterns}
+Key risk: {devil_advocate.challenge or "none identified"}
+{If conditions: "Conditions: {list}"}
+First step: {recommendation from winning cell}
+```
+
+**Narrow win exception:** if `verdict_type == "narrow_win"`, also include:
+```
+Runner-up: {RUNNER_UP_LABEL} — {RUNNER_UP_DESCRIPTION}  (margin: {margin:.2f} — too close to dismiss)
+```
+
+This format is optimized for pipeline handoff (e.g., to `/adversarial-review`): the reviewer gets the winner, the pre-identified risk, and the confidence level without wading through 9 cells of scores.
 
 **6e. Output Structured JSON**
 
