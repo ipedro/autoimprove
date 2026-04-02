@@ -9,78 +9,70 @@ allowed-tools: [Read, Glob, Grep, Bash, Agent, TodoWrite]
 You are NOW executing the adversarial-review skill. Do NOT invoke this skill again via the Skill tool — execute the steps below directly. Invoking it again would create an infinite loop.
 </SKILL-GUARD>
 
-Run the Enthusiast → Adversary → Judge debate cycle on the given target.
+# MANDATORY CHAIN: E → A → J
+
+**This chain is not interpretable. Follow each numbered step exactly. No step may be skipped, reordered, or improvised.**
+
+Agents are loaded via `subagent_type` — do NOT inline their prompts or improvise their logic.
 
 ---
 
-# 1. Parse Arguments
+# STEP 0 — ADAPTIVE MODE DETECTION
 
-From the user's input, extract:
-- **target**: file path, glob pattern, or "diff" (meaning staged/unstaged git diff)
+Measure target size first. Mode gates max rounds and prompt depth.
 
-The skill always runs until deterministic convergence, with an internal safety cap of 10 rounds.
-The goal is to surface all issues — stop only when the debate has genuinely stabilized.
+- Diff target: `git diff HEAD | wc -l` (or `--staged`).
+- File/glob target: count lines via Read/Glob.
 
----
+| Condition | MODE | MAX_ROUNDS |
+|-----------|------|------------|
+| Single file OR diff ≤ 150 lines | `LIGHTWEIGHT` | 3 |
+| Multi-file OR diff > 150 lines | `FULL` | 10 |
 
-# 2. Gather Target Code
-
-Read the target code into a variable to pass to agents.
-
-**If target is a file path or glob:**
-Read the file(s) using Read tool. Concatenate with file headers.
-
-**If target is "diff":**
-```bash
-git diff HEAD
-```
-If empty, try `git diff --staged`. If still empty, tell the user: "Nothing to review — both working tree and staging area are clean. Try: `git diff <branch>`, `git diff HEAD~1`, `/autoimprove review <file>`, or stage some changes first."
-
-Store the result as `TARGET_CODE`.
+Log: `"[AR] Mode: {MODE} ({N} lines, max_rounds: {MAX_ROUNDS})"`
 
 ---
 
-# 2.5. Initialize Telemetry Run
+# STEP 1 — GATHER TARGET CODE
 
-Before the first round, set up a private run folder to capture this debate for the
-self-improvement loop.
+Target is: file path, glob, or `"diff"`.
 
-**Generate a run ID:**
-- Format: `YYYYMMDD-HHMMSS-<target-slug>` where `target-slug` is the basename of the
-  target (or `"diff"` for diff targets), lowercased, non-alphanumeric chars → `-`, max 40 chars.
-- Example: `20260327-103045-retrieve-prefetch-design`
+- File/glob: use Read/Glob, concatenate with `=== {filepath} ===` headers.
+- Diff: `git diff HEAD` (fallback: `git diff --staged`). If empty: stop and inform user.
 
-**Create the run folder:**
+Store as `TARGET_CODE`. If empty: stop — nothing to review.
+
+---
+
+# STEP 2 — INITIALIZE RUN
+
+**Generate run ID:** `YYYYMMDD-HHMMSS-<target-slug>` (basename, lowercased, non-alnum → `-`, max 40 chars).
+
 ```bash
 mkdir -p ~/.autoimprove/runs/<RUN_ID>
 ```
 
-**Write initial `meta.json`:**
+Store: `RUN_ID`, `RUN_DIR=~/.autoimprove/runs/<RUN_ID>`.
+
+**Write `$RUN_DIR/meta.json`:**
 ```json
-{
-  "run_id": "<RUN_ID>",
-  "target": "<target path or diff>",
-  "date": "<ISO timestamp>",
-  "rounds_planned": 10,
-  "rounds_completed": 0,
-  "converged_at_round": null,
-  "status": "running",
-  "model": "claude-haiku-4-5-20251001"
-}
+{ "run_id": "<RUN_ID>", "target": "<target>", "date": "<ISO>", "mode": "<MODE>", "max_rounds": <N>, "rounds_completed": 0, "status": "running" }
 ```
 
-Store `RUN_ID` and `RUN_DIR=~/.autoimprove/runs/<RUN_ID>` for use in later steps.
-If the directory cannot be created (permissions, disk full), log a warning and continue —
-telemetry failure must never block the review.
-
-**Initialize model state:**
+**Initialize state:**
 ```
-ROUND_MODEL = "haiku"        # current round model
-MODEL_LADDER = ["haiku", "sonnet", "opus"]   # escalation order
-ROUND_YIELDS = []            # NOVEL_FINDINGS.length per round, for near-convergence detection
+ROUND = 1
+ROUNDS = []
+CONFIRMED_LOCATIONS = []   # (file, line) tuples from enthusiast/split rulings
+PRIOR_JUDGE_OUTPUT = null
+PRIOR_JUDGE_SUMMARY = null
+ROUND_YIELDS = []
+ROUND_MODEL = "haiku"
+MODEL_LADDER = ["haiku", "sonnet", "opus"]
+converged = false
 ```
 
-**Initialize progress todos** (always — even if telemetry folder failed):
+**Init todos:**
 ```
 TodoWrite([
   {id: "enthusiast", content: "🔍 Enthusiast — surface findings", status: "pending"},
@@ -88,486 +80,214 @@ TodoWrite([
   {id: "judge",      content: "⚖️ Judge — rule on debate",         status: "pending"}
 ])
 ```
-For round 2+, re-emit TodoWrite with all three reset to `pending` before starting the new round.
 
 ---
 
-# 3. Run Debate Rounds
+# STEP 3 — DEBATE LOOP
 
-Loop: run rounds until **deterministic convergence** is reached or `max_rounds` is hit.
+Repeat STEP 3A → 3B → 3C → 3D until `converged = true` or `ROUND > MAX_ROUNDS`.
 
-- **CRITICAL: sequential dispatch only.** Run the three agents in strict order for every round: Enthusiast first, then Adversary, then Judge.
-- **Do not dispatch Enthusiast and Adversary in parallel.** The Adversary's job is to challenge the Enthusiast's specific claims, so it MUST see the Enthusiast's completed output before it starts.
-- **Wait (blocking) for each agent to complete before continuing; dispatch each agent synchronously.** Collect the full Enthusiast output, pass that full output to the Adversary, then pass both full outputs to the Judge.
-- This rule still applies when `/adversarial-review` itself was launched as a background task. The top-level command may be backgrounded; the internal debate agents must still be dispatched synchronously and waited on to complete in order.
+**ORDERING RULE (non-negotiable):** 3A must fully complete before 3B starts. 3B must fully complete before 3C starts. No parallel dispatch. No skipping.
 
-- Start at round 1; increment after each complete round.
-- Stop early when `converged = true` (deterministic check, section 3d). Record `converged_at_round`.
-- Stop when `round > max_rounds`. Log: `"Safety cap reached at round <N> — stopping."` if the safety cap (10) triggered without convergence.
-- Never stop just because the Judge self-reports `convergence: true` — the deterministic check is the only valid stop signal.
+---
 
-For each round:
+## STEP 3A — ENTHUSIAST (MANDATORY)
 
-## 3a. Spawn Enthusiast
+**Compliance pre-check:** If `ROUND > MAX_ROUNDS`, exit loop immediately.
 
-Mark progress: `TodoWrite([{id: "enthusiast", content: "🔍 Enthusiast — surface findings", status: "in_progress"}, ...])`  (keep adversary + judge as pending).
+Mark todo: `{id: "enthusiast", status: "in_progress"}`.
 
-**Before spawning (round > 1):** Build the `CONFIRMED_LOCATIONS` set from all prior rounds:
-- Extract every `(file, line)` tuple from rulings where `winner = "enthusiast"` or `winner = "split"` across all `ROUNDS`.
-- Format as a plain list: `"src/foo.ts:42, src/bar.ts:17, ..."`.
-- This list goes into the Enthusiast prompt as an explicit blocklist (see below).
+**Build CONFIRMED_LOCATIONS list** (round > 1 only):
+Extract `(file, line)` from all prior rulings where `winner` = `"enthusiast"` or `"split"`. Format: `"src/foo.ts:42, src/bar.ts:17"`.
 
-Use the Agent tool to spawn the `autoimprove:enthusiast` agent (`subagent_type: "autoimprove:enthusiast"`):
-
+**Dispatch — use EXACTLY this Agent call:**
 ```
-Prompt: Review the following code and find all issues.
-
-<code>
-{TARGET_CODE}
-</code>
-
-{If round > 1:
-"ALREADY CONFIRMED — skip these locations entirely, do not mention them:
-{CONFIRMED_LOCATIONS}
-
-Prior round summary: {PRIOR_JUDGE_SUMMARY}
-
-Your task is to find issues NOT in the confirmed list above. If you re-raise a confirmed location, your finding will be automatically discarded before reaching the Adversary. Focus exclusively on new, uncovered problems."}
-
-Output your findings as a single JSON object matching the schema. Nothing else.
+Agent(
+  subagent_type: "autoimprove:enthusiast",
+  model: ROUND_MODEL,
+  prompt: "[AR Round {ROUND} — {MODE}] Review the code below. Output ONLY valid JSON per your schema.
+<code>{TARGET_CODE}</code>
+{IF round>1: "BLOCKLIST (do not re-raise): {CONFIRMED_LOCATIONS}\nPrior summary: {PRIOR_JUDGE_SUMMARY}\nFind issues NOT in the blocklist only."}"
+)
 ```
 
-Dispatch the Enthusiast synchronously and wait for the full response before dispatching the Adversary.
+**Validate output (MANDATORY — do not skip):**
+1. Parse response as JSON.
+2. If invalid JSON → re-prompt once: `"Return only the corrected JSON object — no prose, no fences."` Re-parse.
+3. If still invalid → log `enthusiast_malformed_json`, skip 3B and 3C, go to 3D with `findings: []`.
+4. If round == 1 and response ≤ 50 chars → re-prompt once: `"Response appears truncated. Return full JSON."` If still ≤ 50 chars → log `enthusiast_sparse_output`, treat as `findings: []`.
+5. Store as `ENTHUSIAST_OUTPUT`.
 
-**Validate output**: Parse the Enthusiast's response as JSON.
-- If valid JSON with a non-empty `findings` array → store as `ENTHUSIAST_OUTPUT` and continue.
-- If invalid JSON → re-prompt once: `"Your previous response was not valid JSON. Return only the corrected JSON object — no prose, no markdown fences."` Re-parse. If still invalid → log `enthusiast_malformed_json` for this round, skip to next round (or abort if only round).
-- If valid JSON but `findings` is empty → note "Enthusiast found no issues" and skip 3b/3c for this round; proceed to 3e.
-- **Sparse-output check (round 1 only):** If round == 1 and the raw response text is ≤ 50 characters (e.g. `{}`, `{"findings":[]}`, or a single word), the response is almost certainly truncated or the model failed silently. Re-prompt once: `"Your response appears to be incomplete. Return the full JSON object with all findings — do not truncate."` If the retry is also sparse (≤ 50 chars) or invalid, log `enthusiast_sparse_output` and treat as `findings: []` (not as a clean empty — note it in the output warning).
+**Pre-adversary dedup:**
+- Extract `(file, line)` from each new finding.
+- Match against `CONFIRMED_LOCATIONS` where same file AND `|new_line - confirmed_line| <= 5`.
+- Split into `NOVEL_FINDINGS` (no match) and `DUPLICATE_FINDINGS` (matched).
+- If duplicates exist: log `"Auto-dismissed {N} duplicate(s): {locations}"`.
+- Replace `ENTHUSIAST_OUTPUT.findings` with `NOVEL_FINDINGS`.
+- If `NOVEL_FINDINGS` is empty: skip 3B and 3C, go to 3D (convergence path).
 
-## 3a.5. Pre-Adversary Dedup
+Mark todo complete: `{id: "enthusiast", content: "🔍 AR Round {ROUND}: Enthusiast — {NOVEL_FINDINGS.length} findings", status: "completed"}`.
 
-After storing `ENTHUSIAST_OUTPUT`, auto-dismiss duplicate findings before the Adversary sees them:
+---
 
-1. Extract all `(file, line)` tuples from the new Enthusiast findings.
-2. For each tuple, check if it matches any entry in `CONFIRMED_LOCATIONS` — where "match" means same file AND `|new_line - confirmed_line| <= 5`.
-3. Split findings into: `NOVEL_FINDINGS` (no match) and `DUPLICATE_FINDINGS` (matched).
-4. If `DUPLICATE_FINDINGS` is non-empty: log `"Auto-dismissed {N} duplicate finding(s) before Adversary: {file:line, ...}"`.
-5. Replace `ENTHUSIAST_OUTPUT.findings` with `NOVEL_FINDINGS` only before passing to 3b.
-6. **If ALL findings are duplicates** (NOVEL_FINDINGS is empty): skip 3b/3c, treat as `findings: []` convergence path (section 3d). Do not spawn Adversary or Judge this round.
+## STEP 3B — ADVERSARY (MANDATORY after 3A produces findings)
 
-This dedup is orchestrator-side only — the Adversary and Judge never see confirmed-location re-raises.
+**Compliance pre-check:** `ENTHUSIAST_OUTPUT` must exist and `NOVEL_FINDINGS.length > 0`. If not, skip to 3D.
 
-## 3b. Spawn Adversary
+Mark todo: `{id: "adversary", content: "⚔️ AR Round {ROUND}: Adversary — challenging {NOVEL_FINDINGS.length} findings", status: "in_progress"}`.
 
-Mark progress — update the Enthusiast title with the finding count:
+**Dispatch — use EXACTLY this Agent call:**
 ```
-TodoWrite([
-  {id: "enthusiast", content: "🔍 AR Round {ROUND}: Enthusiast — {NOVEL_FINDINGS.length} findings", status: "completed"},
-  {id: "adversary",  content: "⚔️ AR Round {ROUND}: Adversary — challenging {NOVEL_FINDINGS.length} findings", status: "in_progress"},
-  {id: "judge",      content: "⚖️ AR Round {ROUND}: Judge — rule on debate", status: "pending"}
-])
-```
-
-Use the Agent tool to spawn the `autoimprove:adversary` agent (`subagent_type: "autoimprove:adversary"`):
-
-```
-Prompt: Review the Enthusiast's findings and challenge them.
-
-<code>
-{TARGET_CODE}
-</code>
-
-<findings>
-{ENTHUSIAST_OUTPUT with NOVEL_FINDINGS only}
-</findings>
-
-Challenge the findings above. A healthy challenge rate is 15–25% of findings. If every finding looks valid to you, look harder — the Enthusiast is not infallible. Validating 100% of findings without pushback signals insufficient scrutiny, not thoroughness.
-
-Output your verdicts as a single JSON object matching the schema. Nothing else.
+Agent(
+  subagent_type: "autoimprove:adversary",
+  model: ROUND_MODEL,
+  prompt: "[AR Round {ROUND} — {MODE}] Challenge the findings. Output ONLY valid JSON per your schema.
+<code>{TARGET_CODE}</code>
+<findings>{ENTHUSIAST_OUTPUT with NOVEL_FINDINGS only}</findings>
+Healthy challenge rate: 15–25%. Validating 100% without pushback = insufficient scrutiny."
+)
 ```
 
-Only start this step after `ENTHUSIAST_OUTPUT` is fully available. Pass the full Enthusiast JSON into the existing `<findings>` block exactly as produced — do not summarize or paraphrase it.
+**Validate output (MANDATORY):**
+1. Parse response as JSON.
+2. If invalid → re-prompt once. If still invalid → log `adversary_malformed_json`, use `{"verdicts": []}` (all findings uncontested).
+3. Store as `ADVERSARY_OUTPUT`.
 
-**Validate output**: Parse the Adversary's response as JSON.
-- If valid JSON with a `verdicts` array → store as `ADVERSARY_OUTPUT` and continue.
-- If invalid JSON → re-prompt once with the same correction instruction. If still invalid → log `adversary_malformed_json`, pass `{"verdicts": []}` as the adversary input to the Judge (all findings treated as uncontested via Judge's missing-verdicts edge case).
+**Compliance check:** `ADVERSARY_OUTPUT.verdicts` must contain one entry per finding in `NOVEL_FINDINGS`. If count mismatches: log `"adversary_verdict_count_mismatch: expected {N}, got {M}"` — proceed anyway.
 
-## 3c. Spawn Judge
+Mark todo: `{id: "adversary", content: "⚔️ AR Round {ROUND}: Adversary — {challenged_count} challenged", status: "completed"}` where `challenged_count` = verdicts where verdict != "valid".
 
-Mark progress — update the Adversary title with the challenge count (`challenged_count` = verdicts where the Adversary pushed back, not confirmed):
+---
+
+## STEP 3C — JUDGE (MANDATORY after 3B)
+
+**Compliance pre-check:** Both `ENTHUSIAST_OUTPUT` and `ADVERSARY_OUTPUT` must exist. If not, log `judge_skipped_missing_inputs` and go to 3D.
+
+Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — ruling on debate", status: "in_progress"}`.
+
+**Dispatch — use EXACTLY this Agent call:**
 ```
-TodoWrite([
-  {id: "enthusiast", content: "🔍 AR Round {ROUND}: Enthusiast — {NOVEL_FINDINGS.length} findings", status: "completed"},
-  {id: "adversary",  content: "⚔️ AR Round {ROUND}: Adversary — {challenged_count} challenged", status: "completed"},
-  {id: "judge",      content: "⚖️ AR Round {ROUND}: Judge — ruling on debate", status: "in_progress"}
-])
-```
-
-Use the Agent tool to spawn the `autoimprove:judge` agent (`subagent_type: "autoimprove:judge"`):
-
-```
-Prompt: Arbitrate between the Enthusiast and Adversary.
-
-<code>
-{TARGET_CODE}
-</code>
-
-<findings>
-{ENTHUSIAST_OUTPUT}
-</findings>
-
-<verdicts>
-{ADVERSARY_OUTPUT}
-</verdicts>
-
-{If round > 1: "Your prior round rulings: {PRIOR_JUDGE_OUTPUT}. Set convergence: true if your rulings this round are identical to last round."}
-
-After issuing your rulings, introspect: does the NEXT round need a stronger model?
-Set next_round_model to "sonnet" if ANY of these apply:
-- Security-sensitive findings (auth, crypto, injection, permissions)
-- Strong Enthusiast/Adversary disagreement on architectural issues
-- Confirmed critical/high findings involving complex multi-file interactions
-- Adversary debunk rate was 0% this round (debate too one-sided — Sonnet challenges harder)
-Otherwise set next_round_model to "haiku".
-
-Output your rulings as a single JSON object matching the schema. Include next_round_model and a one-sentence next_round_reason. Nothing else.
+Agent(
+  subagent_type: "autoimprove:judge",
+  model: ROUND_MODEL,
+  prompt: "[AR Round {ROUND} — {MODE}] Arbitrate. Output ONLY valid JSON per your schema.
+<code>{TARGET_CODE}</code>
+<findings>{ENTHUSIAST_OUTPUT}</findings>
+<verdicts>{ADVERSARY_OUTPUT}</verdicts>
+{IF round>1: "Prior rulings: {PRIOR_JUDGE_OUTPUT}\nSet convergence:true only if ALL (file,line,winner,final_severity) tuples match prior round."}
+{IF MODE==FULL: "Set next_round_model='sonnet' if: security findings, critical/high multi-file, 0% debunk rate, or strong E/A disagreement. Otherwise 'haiku'."}"
+)
 ```
 
-Only start this step after both `ENTHUSIAST_OUTPUT` and `ADVERSARY_OUTPUT` are complete. Pass both full JSON payloads to the Judge — the Judge must see the exact debate record for the round.
+**Validate output (MANDATORY):**
+1. Parse response as JSON.
+2. If invalid → re-prompt once. If still invalid → log `judge_malformed_json`, mark all findings as `status: unresolved`, exit loop.
+3. Store as `JUDGE_OUTPUT`.
 
-**Validate output**: Parse the Judge's response as JSON.
-- If valid JSON with a `rulings` array → store as `JUDGE_OUTPUT` and continue.
-- If invalid JSON → re-prompt once. If still invalid → log `judge_malformed_json`, record all findings as `status: unresolved`, and end the debate loop.
+**Compliance check:** `JUDGE_OUTPUT.rulings` must have one entry per `NOVEL_FINDINGS`. If count mismatches: log `"judge_ruling_count_mismatch: expected {N}, got {M}"`.
 
-After storing `JUDGE_OUTPUT`, mark all complete — update Judge title with confirmed/debunked counts (`confirmed_count` = rulings where `winner` is `"enthusiast"` or `"split"`; `debunked_count` = rulings where `winner` is `"adversary"`):
-```
-TodoWrite([
-  {id: "enthusiast", content: "🔍 AR Round {ROUND}: Enthusiast — {NOVEL_FINDINGS.length} findings", status: "completed"},
-  {id: "adversary",  content: "⚔️ AR Round {ROUND}: Adversary — {challenged_count} challenged", status: "completed"},
-  {id: "judge",      content: "⚖️ AR Round {ROUND}: Judge — {confirmed_count} confirmed, {debunked_count} debunked", status: "completed"}
-])
-```
+**Count results:** `confirmed_count` = rulings where winner ∈ {enthusiast, split}; `debunked_count` = rulings where winner = adversary.
 
-## 3c.5. Model Escalation Check
+Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — {confirmed_count} confirmed, {debunked_count} debunked", status: "completed"}`.
 
-Two independent escalation paths. Either one sets `ROUND_MODEL = "sonnet"` for the next round.
+**Update state:**
+- Append confirmed `(file, line)` tuples to `CONFIRMED_LOCATIONS`.
+- Store `PRIOR_JUDGE_OUTPUT = JUDGE_OUTPUT`.
+- Store `PRIOR_JUDGE_SUMMARY = JUDGE_OUTPUT.summary`.
 
-**Path A — Anomaly escalation (orchestrator-side, overrides Judge):**
+**Model escalation (FULL mode only):**
+- Path A (anomaly): if any `*_malformed_json` logged this round → `ROUND_MODEL = "sonnet"`.
+- Path B (judge recommendation): use `JUDGE_OUTPUT.next_round_model` (default `"haiku"`).
+- Path A takes priority over Path B.
+- If `ROUND_MODEL == "sonnet"` for 3+ consecutive rounds: log `"[COST WARNING] Sonnet active 3 consecutive rounds."`
 
-Check the error log for the current round. If ANY of these occurred, escalate unconditionally:
-- `enthusiast_malformed_json` or `enthusiast_sparse_output` — Haiku truncated or failed to produce valid JSON
-- `adversary_malformed_json` — same for Adversary
-- `judge_malformed_json` — Judge output unparseable
+**Write `$RUN_DIR/round-{ROUND}.json`:** `{round, run_id, model, enthusiast, adversary, judge, errors, converged}` — omit `errors` if empty.
 
-```
-If round_errors is non-empty:
-  ROUND_MODEL = "sonnet"
-  Log: "Round {N}→{N+1}: escalated to sonnet (anomaly: {round_errors})"
-```
+---
 
-Anomaly escalation takes priority — skip Path B if this triggered.
+## STEP 3D — CONVERGENCE CHECK
 
-**Path B — Judge recommendation:**
+**Append** `NOVEL_FINDINGS.length` to `ROUND_YIELDS`.
 
-Extract `JUDGE_OUTPUT.next_round_model` (defaults to `"haiku"` if missing or null).
+**Empty-findings shortcut:** If `NOVEL_FINDINGS.length == 0` this round → `converged = true`.
 
-Set `ROUND_MODEL = JUDGE_OUTPUT.next_round_model`.
+**Deterministic check (round > 1, when findings exist):**
+- Extract `(file, line, winner, final_severity)` tuples from this round's rulings AND prior round's rulings.
+- Apply ±5-line tolerance: normalize each tuple to its cluster's lowest line.
+- For `file: null` findings: use `(null, first-60-chars-of-resolution, winner, final_severity)`.
+- If normalized sets are identical → `converged = true`.
+- If Judge reported `convergence: true` but deterministic check says false: log `"Judge convergence overridden by deterministic check."` and continue.
+- Round 1 guard: if `ROUND == 1` and Judge returned `convergence: true` → override to `false`. Log: `"convergence: true ignored on round 1."`.
 
-If `ROUND_MODEL` changed from the current round's model:
-```
-Log: "Round {N}→{N+1}: model {'escalated to' if sonnet else 'reset to'} {ROUND_MODEL} — {JUDGE_OUTPUT.next_round_reason}"
-```
-
-**Cost guard:** if `ROUND_MODEL == "sonnet"` for 3 consecutive rounds, log a warning: `"[COST WARNING] Sonnet active for 3 consecutive rounds. Review may be expensive."` but do NOT override either escalation path.
-
-**Note:** Paths A and B handle within-round quality escalation (anomaly or debate complexity). The convergence/near-convergence escalation in step 3d is separate — it triggers when a model tier is exhausted. Both can fire in the same transition; convergence escalation takes priority for setting the next model tier.
-
-Use `ROUND_MODEL` when spawning Enthusiast, Adversary, and Judge in the **next** round (pass as `model: ROUND_MODEL` in each Agent call).
-
-## 3d. Check Convergence
-
-Convergence is only meaningful from round 2 onward.
-
-**Empty-findings shortcut:** If the Enthusiast returned `{"findings": []}` this round (step 3a), the debate is exhausted — there is nothing new to arbitrate. Set `converged = true` immediately, skip 3b/3c, and record `converged_at_round = round`. This is the most common convergence path in later rounds.
-
-**Deterministic check (orchestrator-side):** When `round > 1` and Enthusiast did find issues, compute convergence by comparing this round's judge rulings to the prior round's judge rulings:
-- Extract the set of `(file, line, winner, final_severity)` tuples from both rounds (use `file`+`line` as identity, not `finding_id` — IDs reset each round and are not stable across rounds)
-- **Line tolerance:** two tuples with the same `file` and `winner` where `|line_A - line_B| <= 5` are considered the same finding. Normalize before comparing: assign each finding to the lowest line in its ±5-line cluster.
-- If the normalized sets are identical (same locations, same winners, same severities in any order) → `converged = true`
-- This overrides whatever the Judge reported
-- If a ruling has `file: null`, use `(null, resolution_text_hash, winner, final_severity)` as the tuple — hash the first 60 characters of `resolution` to fingerprint architectural findings
-
-**LLM check (supplemental):** Also check what the Judge reported. If Judge says `convergence: true` but the deterministic check says `false`, log: `"Judge reported convergence but rulings differ — continuing."` and continue.
-
-**Round 1 guard:** If `round == 1` and Judge returned `convergence: true` → treat as `false`. Log: `"convergence: true ignored on round 1."` Continue to round 2.
-
-**Append yield:** After computing `converged`, append `NOVEL_FINDINGS.length` to `ROUND_YIELDS`.
-
-**Model escalation on convergence or near-convergence:**
-
-Before stopping, check whether the current model is exhausted or nearing exhaustion:
-
+**Near-convergence escalation (FULL mode only):**
 ```
 current_yield = ROUND_YIELDS[-1]
-prev_yield    = ROUND_YIELDS[-2] if len(ROUND_YIELDS) >= 2 else None
+prev_yield = ROUND_YIELDS[-2] if len >= 2 else null
 
-near_convergence = (
-  current_yield <= 2 AND
-  prev_yield IS NOT None AND
-  current_yield < prev_yield * 0.4   # yield dropped >60% from prior round
-)
+near_convergence = current_yield <= 2 AND prev_yield != null AND current_yield < prev_yield * 0.4
 
 if converged OR near_convergence:
-  next_model = MODEL_LADDER[MODEL_LADDER.index(ROUND_MODEL) + 1]  # next in ladder
-
-  if ROUND_MODEL == "opus":
-    # Opus converged = true final stop
-    converged = true  # stop loop
+  if ROUND_MODEL == "opus": converged = true (final stop)
   else:
+    next_model = MODEL_LADDER[MODEL_LADDER.index(ROUND_MODEL) + 1]
     ROUND_MODEL = next_model
-    converged = false   # reset — this model had more to say
-    Log: "Round {N}: {'converged' if converged else 'near-convergence'} on {prev_model} (yield={current_yield}) → escalating to {next_model}"
-    # Re-emit todos as pending for the new model pass
-    TodoWrite([
-      {id: "enthusiast", content: "🔍 AR Round {N+1}: Enthusiast", status: "pending"},
-      {id: "adversary",  content: "⚔️ AR Round {N+1}: Adversary",  status: "pending"},
-      {id: "judge",      content: "⚖️ AR Round {N+1}: Judge",      status: "pending"}
-    ])
+    converged = false
+    Log: "Round {N}: escalating to {next_model} (yield={current_yield})"
+    Re-emit todos as pending for round {N+1}
 ```
 
-**Escalation ladder:** haiku → sonnet → opus. Each model sees only findings NOT in `CONFIRMED_LOCATIONS` — the blocklist accumulates across all rounds and models, preventing re-raising at every level.
+**Increment:** `ROUND += 1`.
 
-**Stop condition:** Stop when `converged = true` AND `ROUND_MODEL == "opus"`, OR when `round > max_rounds`. Record `converged_at_round = round`.
-
-## 3e. Store Round
-
-After each complete round, update `PRIOR_JUDGE_SUMMARY`:
-- Extract the `summary` field from `JUDGE_OUTPUT` (or a brief sentence describing confirmed/debunked counts if no summary field).
-- Store as `PRIOR_JUDGE_SUMMARY` — this is what goes into the next round's Enthusiast prompt.
-
-Accumulate round results into `ROUNDS` array.
-
-Write an incremental round file to the telemetry run folder (if `RUN_DIR` is set):
-
-**`$RUN_DIR/round-<N>.json`:**
-```json
-{
-  "round": <N>,
-  "run_id": "<RUN_ID>",
-  "model": "<ROUND_MODEL used this round>",
-  "next_round_model": "<JUDGE_OUTPUT.next_round_model>",
-  "next_round_reason": "<JUDGE_OUTPUT.next_round_reason>",
-  "enthusiast": <ENTHUSIAST_OUTPUT>,
-  "adversary": <ADVERSARY_OUTPUT>,
-  "judge": <JUDGE_OUTPUT>,
-  "errors": ["enthusiast_malformed_json" | "adversary_malformed_json" | "judge_malformed_json"],
-  "converged": <true|false>
-}
-```
-
-Omit the `errors` key if the array is empty. This file is written after every round so
-a partial run is recoverable even if the session is interrupted.
+**Loop decision:** If `converged = true` OR `ROUND > MAX_ROUNDS` → exit loop. Otherwise → go to STEP 3A.
 
 ---
 
-# 4. Format Output
-
-After all rounds complete, present results to the user:
+# STEP 4 — FORMAT OUTPUT
 
 ```
-## Debate Review — {target} ({total_rounds} round(s){if converged: ", converged at round N"})
-
+## Debate Review — {target} ({total_rounds} rounds{if converged: ", converged at round N"})
 ### Confirmed Findings
-
-{For each finding where judge ruled winner=enthusiast or winner=split:}
-- **{severity}** [{file}:{line}] {resolution}
-
+{For each winner ∈ {enthusiast, split}: - **{severity}** [{file}:{line}] {resolution}}
 ### Debunked Findings
-
-{For each finding where judge ruled winner=adversary:}
-- ~~{description}~~ — {adversary reasoning}
-
-### Unresolved Findings
-
-{If any findings have status: unresolved (judge_malformed_json occurred):}
-- **{severity}** [{file}:{line}] {description} *(unresolved — judge output was malformed)*
-
-{If no unresolved findings: omit this section entirely}
-
+{For each winner=adversary: - ~~{description}~~ — {adversary reasoning}}
+### Unresolved Findings (if judge_malformed_json occurred)
 ### Summary
-
-{Judge's final summary}
-{If converged: "Debate converged at round {N}."}
-{If any malformed_json errors: "Warning: {N} round(s) had agent output errors — results may be incomplete."}
+{JUDGE_OUTPUT.summary} | {if converged: "Converged at round N."} | {if errors: "Warning: N round(s) had agent errors."}
 ```
 
-Also output the full structured JSON using the `run.json` shape — confirmed and debunked
-as flat arrays, each entry tagged with the round it was discovered in:
+Structured JSON: `{"total_rounds": N, "converged_at_round": null, "confirmed": [...], "debunked": [...], "by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0}}`
 
-```json
-{
-  "total_rounds": 4,
-  "converged_at_round": null,
-  "confirmed": [
-    { "id": "F2", "severity": "critical", "winner": "enthusiast", "round": 1, "file": "src/example.ts", "line": 42, "source": "enthusiast", "resolution": "..." }
-  ],
-  "debunked": [
-    { "id": "F4", "round": 1, "reason": "..." }
-  ],
-  "by_severity": { "critical": 1, "high": 5, "medium": 11, "low": 9 }
-}
+**Self-Assessment:**
 ```
-
----
-
-# 4.5. Write Telemetry
-
-After formatting output, finalize the run folder (if `RUN_DIR` is set).
-
-**Write `$RUN_DIR/run.json`** — the complete structured run for downstream use:
-```json
-{
-  "run_id": "<RUN_ID>",
-  "meta": {
-    "target": "<path or diff>",
-    "date": "<ISO timestamp>",
-    "rounds_planned": <N>,
-    "rounds_completed": <actual>,
-    "converged_at_round": <N or null>,
-    "model": "claude-haiku-4-5-20251001",
-    "judge_llm_convergence_mismatches": <count of rounds where judge said converged but deterministic check disagreed>
-  },
-  "rounds": [ <ROUNDS array> ],
-  "confirmed": [
-    { "id": "F1", "severity": "high", "winner": "enthusiast", "round": 1, "file": "src/example.ts", "line": 42, "source": "enthusiast", "resolution": "...", "edit_instruction": "..." }
-  ],
-  "debunked": [
-    { "id": "F4", "round": 1, "reason": "..." }
-  ],
-  "final_summary": "<Judge's last summary string>",
-  "total_rounds": <N>,
-  "converged_at_round": <N or null>
-}
-```
-
-**Update `$RUN_DIR/meta.json`** with final stats:
-```json
-{
-  "run_id": "<RUN_ID>",
-  "target": "<path or diff>",
-  "date": "<ISO timestamp>",
-  "rounds_planned": <N>,
-  "rounds_completed": <actual>,
-  "converged_at_round": <N or null>,
-  "status": "complete",
-  "model": "claude-haiku-4-5-20251001",
-  "total_findings": <confirmed + debunked>,
-  "confirmed": <count>,
-  "debunked": <count>,
-  "by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0 },
-  "judge_llm_convergence_mismatches": <count>
-}
-```
-
-**Write `$RUN_DIR/report.md`** — human-readable summary of the run:
-
-````markdown
-# Adversarial Review Report
-
-**Run:** {RUN_ID}  
-**Target:** {target}  
-**Date:** {date}  
-**Rounds:** {rounds_completed}{if converged: " (converged at round {converged_at_round})"} | **Model:** {model}
-
-## Confirmed Findings
-
-| Sev | ID | File:Line | Finding | Edit Instruction |
-|-----|----|-----------|---------|-----------------|
-{For each confirmed finding (winner=enthusiast or winner=split):}
-| {final_severity} | {finding_id} | {file}:{line} | {resolution} | {edit_instruction} |
-
-{If no confirmed findings: output row: | — | — | — | No confirmed findings. | — |}
-
-## Dismissed / Debunked
-
-| ID | Finding | Reason |
-|----|---------|--------|
-{For each dismissed finding (winner=adversary):}
-| {finding_id} | {description} | {resolution} |
-
-{If no dismissed findings: output row: | — | No dismissed findings. | — |}
-
-## Round Trail
-
-{For each round N:}
-### Round {N}
-- Enthusiast: {count} findings
-- Confirmed: {comma-separated list of "ID (severity)" for enthusiast/split rulings}
-- Debunked: {comma-separated list of IDs for adversary rulings}
-
-## Sources
-
-| Agent | Role | Rounds active |
-|-------|------|---------------|
-| Enthusiast | Finding generation | All rounds |
-| Adversary | Challenge / debunk | All rounds |
-| Judge | Final arbitration | All rounds |
-
-{List any per-finding source attribution: for each confirmed finding with source != null, note the agent. If all findings come from "enthusiast", a single line suffices: "All confirmed findings were sourced from the Enthusiast agent."}
-````
-
-Generate this file from the final `run.json` data. If `RUN_DIR` is not set, skip silently.
-
----
-
-**Print the run folder path** at the end of the output:
-```
-📁 Run saved: ~/.autoimprove/runs/<RUN_ID>/
-```
-
-This is the last line of output — it should appear after the structured JSON dump and the Self-Assessment section.
-
-**Write Self-Assessment section** immediately before the run folder path line:
-
-```markdown
 ## Self-Assessment
-- Model used: [opus/sonnet/haiku]
-- Could cheaper model have done this? [1=definitely haiku, 2=probably haiku, 3=toss-up, 4=probably needed this tier, 5=this tier was essential]
+- Mode: [LIGHTWEIGHT|FULL] | Model: [haiku|sonnet|opus]
+- Could cheaper model have done this? [1=definitely haiku … 5=this tier essential]
 - Reason: [1 sentence]
 ```
 
-Populate each field honestly:
-- **Model used**: the model executing this review (e.g. `sonnet`, `opus`, `haiku`)
-- **Could cheaper model have done this?**: score 1–5 based on actual complexity of the target reviewed. Simple config files, small diffs, single-function changes → lean toward 1–2. Complex architectural code, multi-file refactors, security-sensitive logic → lean toward 4–5. Be honest — this data feeds the model-selection calibration loop.
-- **Reason**: one sentence explaining the score (e.g. "The target was a 12-line config change with no logic complexity — haiku handles this easily.").
+---
 
-Also persist the self-assessment in `$RUN_DIR/meta.json` under a `self_assessment` key:
-```json
-"self_assessment": {
-  "model_used": "haiku",
-  "cheaper_model_score": 2,
-  "reason": "Small config diff with no architectural complexity."
-}
-```
+# STEP 5 — WRITE TELEMETRY
+
+Non-fatal — skip silently if `RUN_DIR` is unset or any write fails.
+
+- `$RUN_DIR/run.json` — full structured run (all rounds + confirmed + debunked + meta)
+- `$RUN_DIR/meta.json` — update with final stats (`status: "complete"`, counts, `by_severity`)
+- `$RUN_DIR/report.md` — markdown table of confirmed findings
+
+Print last: `📁 Run saved: ~/.autoimprove/runs/<RUN_ID>/`
 
 ---
 
-# 5. Notes
+# COMPLIANCE RULES
 
-## Background execution reliability
+| Rule | Violation action |
+|------|-----------------|
+| 3A before 3B | Adversary dispatched without ENTHUSIAST_OUTPUT → abort, re-run from 3A |
+| 3B before 3C | Judge dispatched without ADVERSARY_OUTPUT → log error, use `{"verdicts": []}` |
+| Each agent uses exact subagent_type | `autoimprove:enthusiast` / `autoimprove:adversary` / `autoimprove:judge` |
+| Output validated before passing forward | Invalid → one re-prompt → fallback (never skip validation) |
+| Convergence = deterministic check only | Judge self-report overridden when it disagrees |
+| Round 1 convergence = always false | No exception |
 
-**This skill ALWAYS executes E→A→J inline — it NEVER re-dispatches itself to background.**
-
-If you are already inside a background agent: execute the E→A→J pipeline directly here. Do NOT spawn another background agent.
-
-If the CALLER wants non-blocking AR from outside:
-- Use `Agent(run_in_background: true, prompt: "Invoke Skill('autoimprove:adversarial-review', args: '...')")` — no `subagent_type` (uses default general-purpose)
-- Do NOT specify `subagent_type: autoimprove:adversarial-review` — that agent type does not exist
-- Do NOT nest background agents inside background agents (causes silent failures)
-
-- Each agent is spawned with `model: haiku` by default. Override with `model: sonnet` for complex multi-file reviews or security-sensitive code.
-- The review skill NEVER influences keep/discard decisions in the autoimprove loop. It is advisory only.
-- Total token budget: the orchestrator should track approximate token usage. If approaching session limits, warn the user.
-- **Sparse-output detection:** A model returning ≤ 50 characters of valid JSON on the first round is a strong signal of silent failure or context-window truncation — not a genuine "no findings" result. The re-prompt in 3a is the only recovery mechanism. If after retry the output is still sparse, warn the user: `"Warning: Enthusiast returned suspiciously short output — findings may be incomplete."` This warning appears in the final output alongside any `malformed_json` warnings.
-- **Telemetry fail-safe:** If `mkdir -p ~/.autoimprove/runs/<RUN_ID>` fails (permissions, disk full, read-only filesystem), set `RUN_DIR=""` and continue. All subsequent steps that reference `$RUN_DIR` must check `if [ -n "$RUN_DIR" ]` before writing. Telemetry failure is non-fatal and must never block or alter the review result. Log a single inline warning: `"⚠ Telemetry unavailable: <error>"` appended to the Self-Assessment section.
+**Background execution:** This skill executes E→A→J inline — never re-dispatches itself. Caller wanting non-blocking AR: `Agent(run_in_background: true, prompt: "Invoke Skill('autoimprove:adversarial-review', args: '...')")` — no `subagent_type`.
