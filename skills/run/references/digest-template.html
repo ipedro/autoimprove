@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>autoimprove · Session Digest</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --text:     #c9d1d9;
+    --muted:    #8b949e;
+    --green:    #3fb950;
+    --green-bg: #1a3a23;
+    --red:      #f85149;
+    --red-bg:   #3a1a1a;
+    --yellow:   #d29922;
+    --yellow-bg:#3a2e0a;
+    --blue:     #58a6ff;
+    --purple:   #bc8cff;
+    --font:     'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 32px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ─────────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+  }
+  .header-logo { color: var(--blue); font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+  .header-meta { color: var(--muted); font-size: 12px; }
+  .header-meta span { color: var(--text); }
+
+  /* ── Stat Cards ─────────────────────────────────────── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat.green { border-color: var(--green); }
+  .stat.green .stat-value { color: var(--green); }
+  .stat.red { border-color: var(--red); }
+  .stat.red .stat-value { color: var(--red); }
+  .stat.yellow { border-color: var(--yellow); }
+  .stat.yellow .stat-value { color: var(--yellow); }
+  .stat.blue { border-color: var(--blue); }
+  .stat.blue .stat-value { color: var(--blue); }
+
+  /* ── Section ────────────────────────────────────────── */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Experiment Timeline ─────────────────────────────── */
+  .timeline { display: flex; flex-direction: column; gap: 8px; }
+
+  .exp-row {
+    display: grid;
+    grid-template-columns: 40px 160px 90px 1fr 80px 60px;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    transition: background 0.1s;
+  }
+  .exp-row:hover { background: rgba(255,255,255,0.03); }
+
+  .exp-id { color: var(--muted); font-size: 11px; }
+
+  .exp-theme {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--blue);
+    font-size: 12px;
+  }
+
+  .badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: center;
+  }
+  .badge-keep    { background: var(--green-bg); color: var(--green); }
+  .badge-regress { background: var(--red-bg);   color: var(--red); }
+  .badge-fail    { background: var(--red-bg);   color: var(--red); }
+  .badge-neutral { background: #21262d;         color: var(--muted); }
+  .badge-crash   { background: var(--red-bg);   color: var(--red); }
+  .badge-other   { background: #21262d;         color: var(--muted); }
+
+  .bar-wrap { position: relative; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+  .bar-fill.keep    { background: var(--green); }
+  .bar-fill.regress { background: var(--red); }
+  .bar-fill.fail    { background: var(--red); opacity: 0.5; }
+  .bar-fill.neutral { background: var(--muted); opacity: 0.4; }
+  .bar-fill.other   { background: var(--muted); opacity: 0.2; }
+
+  .delta {
+    text-align: right;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .delta.pos { color: var(--green); }
+  .delta.neg { color: var(--red); }
+  .delta.zero { color: var(--muted); }
+
+  .tokens { color: var(--muted); font-size: 11px; text-align: right; }
+
+  /* ── Commit msg tooltip row ──────────────────────────── */
+  .exp-msg {
+    grid-column: 2 / -1;
+    color: var(--muted);
+    font-size: 11px;
+    padding: 0 0 6px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Metric Trends ───────────────────────────────────── */
+  .metrics { display: flex; flex-direction: column; gap: 14px; }
+  .metric-row { display: grid; grid-template-columns: 130px 60px 1fr 60px 80px; align-items: center; gap: 12px; }
+  .metric-name { color: var(--text); font-size: 12px; }
+  .metric-val { font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; color: var(--muted); }
+  .trend-track { position: relative; height: 4px; background: #21262d; border-radius: 2px; }
+  .trend-fill { height: 100%; border-radius: 2px; }
+  .trend-fill.improved { background: var(--green); }
+  .trend-fill.regressed { background: var(--red); }
+  .trend-fill.flat { background: var(--muted); opacity: 0.4; }
+  .metric-delta { font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+  .metric-delta.improved { color: var(--green); }
+  .metric-delta.regressed { color: var(--red); }
+  .metric-delta.flat { color: var(--muted); }
+
+  /* ── Trust Tier ──────────────────────────────────────── */
+  .tier-wrap { display: flex; align-items: center; gap: 16px; }
+  .tier-label { color: var(--text); font-size: 13px; }
+  .tier-track { flex: 1; height: 8px; background: #21262d; border-radius: 4px; overflow: hidden; }
+  .tier-fill { height: 100%; background: var(--purple); border-radius: 4px; transition: width 0.6s ease; }
+  .tier-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+  /* ── Kept list ───────────────────────────────────────── */
+  .kept-list { display: flex; flex-direction: column; gap: 6px; }
+  .kept-item { display: grid; grid-template-columns: 40px 160px 1fr; gap: 12px; padding: 8px 10px; border-radius: 6px; }
+  .kept-item:hover { background: rgba(63,185,80,0.05); }
+  .kept-item .exp-id { color: var(--muted); }
+  .kept-item .exp-theme { color: var(--green); }
+  .kept-item .exp-msg { color: var(--text); font-size: 12px; grid-column: unset; padding: 0; }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  .footer { color: var(--muted); font-size: 11px; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ── DATA BLOCK — replaced by skill at generation time ── */
+const DATA = __DATA_PLACEHOLDER__;
+/* ─────────────────────────────────────────────────────── */
+
+function badgeClass(v) {
+  if (v === 'keep') return 'keep';
+  if (v === 'regress') return 'regress';
+  if (v === 'gate_fail') return 'fail';
+  if (v === 'neutral') return 'neutral';
+  if (v === 'crash') return 'crash';
+  return 'other';
+}
+
+function badgeLabel(v) {
+  const map = { keep:'kept', regress:'regress', gate_fail:'gate fail',
+                neutral:'neutral', rebase_fail:'rebase fail',
+                skipped_stagnated:'stagnated', skipped_drift_halt:'drift halt',
+                rollback:'rollback', crash:'crash' };
+  return map[v] || v;
+}
+
+function fmtTokens(n) {
+  if (!n || n === 0) return '—';
+  if (n >= 1000) return (n/1000).toFixed(1)+'k';
+  return n;
+}
+
+function fmtDelta(d, dir) {
+  if (d == null) return { text: '—', cls: 'zero' };
+  const improved = dir === 'lower_is_better' ? d < 0 : d > 0;
+  const sign = d > 0 ? '+' : '';
+  return { text: sign + d.toFixed(1) + '%', cls: improved ? 'pos' : (d === 0 ? 'zero' : 'neg') };
+}
+
+function maxAbsDelta(exps) {
+  let m = 0;
+  exps.forEach(e => { if (e.max_delta_pct) m = Math.max(m, Math.abs(e.max_delta_pct)); });
+  return m || 1;
+}
+
+function render() {
+  const d = DATA;
+  const exps = d.experiments || [];
+  const keeps = exps.filter(e => e.verdict === 'keep');
+  const fails = exps.filter(e => ['gate_fail','regress','rebase_fail','crash'].includes(e.verdict));
+  const neutrals = exps.filter(e => e.verdict === 'neutral' || e.verdict?.startsWith('skipped'));
+  const totalTokens = exps.reduce((s,e) => s + (e.tokens||0), 0);
+  const maxDelta = maxAbsDelta(exps);
+
+  const epochDrift = (() => {
+    if (!d.metrics || !Object.keys(d.metrics).length) return null;
+    const vals = Object.values(d.metrics).map(m => {
+      const pct = m.delta_pct ?? 0;
+      return m.direction === 'lower_is_better' ? -pct : pct;
+    });
+    return (vals.reduce((a,b)=>a+b,0) / vals.length).toFixed(1);
+  })();
+
+  document.getElementById('app').innerHTML = `
+    <div class="header">
+      <div class="header-logo">⚗️ autoimprove</div>
+      <div class="header-meta">
+        Session <span>#${d.session ?? '—'}</span> &nbsp;·&nbsp;
+        <span>${d.project ?? 'project'}</span> &nbsp;·&nbsp;
+        <span>${d.date ?? ''}</span>
+        ${d.exit_reason ? `&nbsp;·&nbsp; exit: <span>${d.exit_reason.replace(/_/g,' ')}</span>` : ''}
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat blue">
+        <div class="stat-value">${exps.length}</div>
+        <div class="stat-label">Experiments</div>
+      </div>
+      <div class="stat green">
+        <div class="stat-value">${keeps.length}</div>
+        <div class="stat-label">Kept</div>
+      </div>
+      <div class="stat ${fails.length > 0 ? 'red' : ''}">
+        <div class="stat-value" style="${fails.length === 0 ? 'color:var(--muted)' : ''}">${fails.length}</div>
+        <div class="stat-label">Discarded</div>
+      </div>
+      <div class="stat ${neutrals.length > 0 ? 'yellow' : ''}">
+        <div class="stat-value" style="${neutrals.length === 0 ? 'color:var(--muted)' : ''}">${neutrals.length}</div>
+        <div class="stat-label">Neutral</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" style="color:var(--purple)">T${d.trust_tier ?? '—'}</div>
+        <div class="stat-label">Trust tier</div>
+      </div>
+      ${epochDrift != null ? `
+      <div class="stat ${parseFloat(epochDrift)>=0 ? 'green':'red'}">
+        <div class="stat-value">${parseFloat(epochDrift)>=0?'+':''}${epochDrift}%</div>
+        <div class="stat-label">Epoch drift</div>
+      </div>` : ''}
+      <div class="stat">
+        <div class="stat-value" style="color:var(--muted);font-size:18px">${fmtTokens(totalTokens)}</div>
+        <div class="stat-label">Tokens used</div>
+      </div>
+    </div>
+
+    ${exps.length ? `
+    <div class="section">
+      <div class="section-title">Experiment timeline</div>
+      <div class="timeline">
+        ${exps.map(e => {
+          const bc = badgeClass(e.verdict);
+          const barPct = e.max_delta_pct ? Math.min(100, Math.abs(e.max_delta_pct) / maxDelta * 100) : 0;
+          const delta = fmtDelta(e.max_delta_pct, e.max_delta_direction);
+          return `
+          <div class="exp-row">
+            <div class="exp-id">#${String(e.id).padStart(3,'0')}</div>
+            <div class="exp-theme">${e.theme ?? '—'}</div>
+            <div><span class="badge badge-${bc}">${badgeLabel(e.verdict)}</span></div>
+            <div class="bar-wrap"><div class="bar-fill ${bc}" style="width:${barPct}%"></div></div>
+            <div class="delta ${delta.cls}">${delta.text}</div>
+            <div class="tokens">${fmtTokens(e.tokens)}</div>
+          </div>
+          ${e.commit_msg && e.commit_msg !== '-' ? `
+          <div class="exp-row" style="padding-top:0">
+            <div></div>
+            <div class="exp-msg" style="grid-column:2/-1;font-size:11px;color:var(--muted);padding-bottom:4px">"${e.commit_msg}"</div>
+          </div>` : ''}
+          `;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
+    ${d.metrics && Object.keys(d.metrics).length ? `
+    <div class="section">
+      <div class="section-title">Metric trends</div>
+      <div class="metrics">
+        ${Object.entries(d.metrics).map(([name, m]) => {
+          const improved = m.direction === 'lower_is_better' ? (m.delta_pct??0) < 0 : (m.delta_pct??0) > 0;
+          const cls = (m.delta_pct??0) === 0 ? 'flat' : (improved ? 'improved' : 'regressed');
+          const pct = Math.min(100, Math.abs(m.delta_pct ?? 0) * 4);
+          const arrow = improved ? '↑' : ((m.delta_pct??0) === 0 ? '→' : '↓');
+          const sign = (m.delta_pct??0) > 0 ? '+' : '';
+          return `
+          <div class="metric-row">
+            <div class="metric-name">${name}</div>
+            <div class="metric-val">${m.baseline ?? '—'}</div>
+            <div class="trend-track"><div class="trend-fill ${cls}" style="width:${pct}%"></div></div>
+            <div class="metric-val">${m.final ?? '—'}</div>
+            <div class="metric-delta ${cls}">${arrow} ${sign}${(m.delta_pct??0).toFixed(1)}%</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
+    ${d.trust_tier != null ? `
+    <div class="section">
+      <div class="section-title">Trust tier progress</div>
+      <div class="tier-wrap">
+        <div class="tier-label">Tier ${d.trust_tier}</div>
+        <div class="tier-track">
+          <div class="tier-fill" style="width:${Math.min(100, ((d.consecutive_keeps??0) / (d.keeps_needed_for_next??10)) * 100)}%"></div>
+        </div>
+        <div class="tier-meta">${d.consecutive_keeps ?? 0} / ${d.keeps_needed_for_next ?? '?'} consecutive keeps for tier ${(d.trust_tier??1)+1}</div>
+      </div>
+    </div>` : ''}
+
+    ${keeps.length ? `
+    <div class="section">
+      <div class="section-title">Kept experiments</div>
+      <div class="kept-list">
+        ${keeps.map(e => `
+        <div class="kept-item">
+          <div class="exp-id">#${String(e.id).padStart(3,'0')}</div>
+          <div class="exp-theme">${e.theme ?? '—'}</div>
+          <div class="exp-msg">${e.commit_msg && e.commit_msg !== '-' ? `"${e.commit_msg}"` : '—'}</div>
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${d.stagnated_themes && d.stagnated_themes.length ? `
+    <div class="section">
+      <div class="section-title">⚠️ Stagnated themes</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${d.stagnated_themes.map(t => `<span style="background:var(--yellow-bg);color:var(--yellow);padding:3px 10px;border-radius:4px;font-size:12px">${t}</span>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <div class="footer">
+      generated by autoimprove · <a href="experiments/experiments.tsv" style="color:var(--blue);text-decoration:none">experiments.tsv</a>
+    </div>
+  `;
+}
+
+render();
+</script>
+</body>
+</html>

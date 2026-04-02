@@ -404,3 +404,80 @@ TaskUpdate(taskId: REPORT_TASK_ID, status: "completed", metadata: {
   exit_reason: "<budget_exhausted | all_stagnated | epoch_drift_halt>"
 })
 ```
+
+## 4d. Visual Digest (optional)
+
+After printing the terminal summary, offer a visual digest:
+
+```
+Visual digest? [Y/n]
+```
+
+If the user says yes (or presses Enter):
+
+**1. Build the DATA object** from files already in memory:
+
+```javascript
+const DATA = {
+  project:    "<project name from autoimprove.yaml>",
+  session:    <session_count>,
+  date:       "<YYYY-MM-DD>",
+  exit_reason: "<budget_exhausted | all_stagnated | epoch_drift_halt>",
+  trust_tier: <trust_tier>,
+  consecutive_keeps: <consecutive_keeps>,
+  keeps_needed_for_next: <tier_threshold - consecutive_keeps>,
+  stagnated_themes: [...],   // from state.json theme_stagnation
+
+  // One entry per experiment in this session (from experiments.tsv + context.json):
+  experiments: [
+    {
+      id:                  "<id>",
+      theme:               "<theme>",
+      verdict:             "<keep|gate_fail|regress|neutral|...>",
+      commit_msg:          "<commit_msg or ->",
+      tokens:              <tokens or 0>,
+      // From context.json — best single-metric delta for the bar:
+      max_delta_pct:       <float or null>,       // largest abs(delta_pct) across improved metrics
+      max_delta_direction: "<higher_is_better | lower_is_better>"
+    },
+    ...
+  ],
+
+  // Aggregate metric drift (epoch → rolling):
+  metrics: {
+    "<metric_name>": {
+      baseline:    <epoch baseline value>,
+      final:       <rolling baseline value>,
+      delta_pct:   <float>,
+      direction:   "<higher_is_better | lower_is_better>"
+    },
+    ...
+  }
+};
+```
+
+For `max_delta_pct`: read each kept experiment's `experiments/<id>/context.json`. Pick the metric with the highest `abs(delta_pct)` from the `improved` list. For non-kept experiments, `max_delta_pct = null`.
+
+For `metrics`: compare `epoch-baseline.json` values to `rolling-baseline.json` values. Compute `delta_pct = (final - baseline) / baseline * 100`. Use `direction` from `evaluate-config.json` metric definitions.
+
+**2. Generate the HTML** by reading `references/digest-template.html` and replacing `__DATA_PLACEHOLDER__` with the JSON-serialized DATA object:
+
+```bash
+# Read template, inject data, write digest
+DIGEST_PATH="experiments/digest-session-<session_count>.html"
+```
+
+Use Read to load the template, substitute `__DATA_PLACEHOLDER__` with `JSON.stringify(DATA)`, then Write the result to `DIGEST_PATH`.
+
+**3. Open in browser:**
+
+```bash
+open "<project_path>/experiments/digest-session-<session_count>.html"
+```
+
+**4.** Update the TodoWrite report task label:
+```
+TodoWrite([{id: "report", content: "📋 Session report + visual digest", status: "completed"}])
+```
+
+If the user declines the digest, mark the report task completed as-is and skip this step entirely.
