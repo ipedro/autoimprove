@@ -73,6 +73,11 @@ Store `RUN_ID` and `RUN_DIR=~/.autoimprove/runs/<RUN_ID>` for use in later steps
 If the directory cannot be created (permissions, disk full), log a warning and continue —
 telemetry failure must never block the review.
 
+**Initialize model state:**
+```
+ROUND_MODEL = "haiku"   # default; Judge may escalate after each round
+```
+
 **Initialize progress todos** (always — even if telemetry folder failed):
 ```
 TodoWrite([
@@ -202,7 +207,15 @@ Prompt: Arbitrate between the Enthusiast and Adversary.
 
 {If round > 1: "Your prior round rulings: {PRIOR_JUDGE_OUTPUT}. Set convergence: true if your rulings this round are identical to last round."}
 
-Output your rulings as a single JSON object matching the schema. Nothing else.
+After issuing your rulings, introspect: does the NEXT round need a stronger model?
+Set next_round_model to "sonnet" if ANY of these apply:
+- Security-sensitive findings (auth, crypto, injection, permissions)
+- Strong Enthusiast/Adversary disagreement on architectural issues
+- Confirmed critical/high findings involving complex multi-file interactions
+- Adversary debunk rate was 0% this round (debate too one-sided — Sonnet challenges harder)
+Otherwise set next_round_model to "haiku".
+
+Output your rulings as a single JSON object matching the schema. Include next_round_model and a one-sentence next_round_reason. Nothing else.
 ```
 
 Only start this step after both `ENTHUSIAST_OUTPUT` and `ADVERSARY_OUTPUT` are complete. Pass both full JSON payloads to the Judge — the Judge must see the exact debate record for the round.
@@ -212,6 +225,21 @@ Only start this step after both `ENTHUSIAST_OUTPUT` and `ADVERSARY_OUTPUT` are c
 - If invalid JSON → re-prompt once. If still invalid → log `judge_malformed_json`, record all findings as `status: unresolved`, and end the debate loop.
 
 After storing `JUDGE_OUTPUT`, mark: `TodoWrite([{id: "enthusiast", ..., status: "completed"}, {id: "adversary", ..., status: "completed"}, {id: "judge", ..., status: "completed"}])`.
+
+## 3c.5. Model Escalation Check
+
+Extract `JUDGE_OUTPUT.next_round_model` (defaults to `"haiku"` if missing or null).
+
+Set `ROUND_MODEL = JUDGE_OUTPUT.next_round_model`.
+
+If `ROUND_MODEL` changed from the current round's model:
+```
+Log: "Round {N}→{N+1}: model {'escalated to' if sonnet else 'reset to'} {ROUND_MODEL} — {JUDGE_OUTPUT.next_round_reason}"
+```
+
+Use `ROUND_MODEL` when spawning Enthusiast, Adversary, and Judge in the **next** round (pass as `model: ROUND_MODEL` in each Agent call). The current round already ran with whatever model was active.
+
+**Cost guard:** if `ROUND_MODEL == "sonnet"` for 3 consecutive rounds, log a warning: `"[COST WARNING] Sonnet active for 3 consecutive rounds (~{estimated_cost}). Review may be expensive."` but do NOT override the Judge's recommendation.
 
 ## 3d. Check Convergence
 
@@ -247,6 +275,9 @@ Write an incremental round file to the telemetry run folder (if `RUN_DIR` is set
 {
   "round": <N>,
   "run_id": "<RUN_ID>",
+  "model": "<ROUND_MODEL used this round>",
+  "next_round_model": "<JUDGE_OUTPUT.next_round_model>",
+  "next_round_reason": "<JUDGE_OUTPUT.next_round_reason>",
   "enthusiast": <ENTHUSIAST_OUTPUT>,
   "adversary": <ADVERSARY_OUTPUT>,
   "judge": <JUDGE_OUTPUT>,
