@@ -35,11 +35,11 @@ Pre-process a fuzzy problem into a crisp `/idea-matrix` input. Ends with a direc
 **Initialize progress tracking:**
 ```
 TodoWrite([
-  {id: "sharpen",     content: "Step 1 — Sharpen the problem statement", status: "pending"},
-  {id: "surface",     content: "Step 2 — Surface 3–5 distinct options",   status: "pending"},
-  {id: "feasibility", content: "Step 3 — Quick feasibility check",         status: "pending"},
-  {id: "output",      content: "Step 4 — Output ready-to-paste block",    status: "pending"},
-  {id: "handoff",     content: "Step 5 — Hand off to /idea-matrix",       status: "pending"}
+  {id: "sharpen",     content: "🎯 Sharpen the problem statement",  status: "pending"},
+  {id: "surface",     content: "💡 Surface 3–5 distinct options",   status: "pending"},
+  {id: "feasibility", content: "✅ Quick feasibility check",         status: "pending"},
+  {id: "output",      content: "📋 Output ready-to-paste block",    status: "pending"},
+  {id: "handoff",     content: "🚀 Hand off to /idea-matrix",       status: "pending"}
 ])
 ```
 

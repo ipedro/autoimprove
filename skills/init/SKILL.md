@@ -36,6 +36,16 @@ Scaffold an `autoimprove.yaml` configuration for the current project. Detect the
 
 If `autoimprove.yaml` already exists, ask the user if they want to overwrite it or update specific sections.
 
+**Initialize progress tracking:**
+```
+TodoWrite([
+  {id: "detect",     content: "🔍 Detect project type and tooling", status: "in_progress"},
+  {id: "config",     content: "🛠️ Generate autoimprove.yaml",        status: "pending"},
+  {id: "benchmarks", content: "📊 Create benchmark script",          status: "pending"},
+  {id: "verify",     content: "✅ Verify gates and metrics",         status: "pending"}
+])
+```
+
 ---
 
 ## 1. Detect Project Type
@@ -63,6 +73,8 @@ Verify the command exists by running it briefly. Note whether tests pass or fail
 - Python: `mypy .` (if mypy in dependencies)
 - Rust: `cargo check`
 - Go: `go vet ./...`
+
+Mark: `TodoWrite([{id: "detect", status: "completed"}, {id: "config", status: "in_progress"}])`
 
 ## 4. Suggest Benchmarks
 
@@ -143,6 +155,8 @@ safety:
   stagnation_window: 5
 ```
 
+Mark: `TodoWrite([{id: "config", status: "completed"}, {id: "benchmarks", status: "in_progress"}])`
+
 ## 6. Create Benchmark Script if Needed
 
 If the user wants metrics that require a script, create `benchmark/metrics.sh`. Example:
@@ -170,6 +184,8 @@ mkdir -p experiments
 
 The orchestrator generates `experiments/evaluate-config.json` at session start, but generate a preview now so the user can verify the setup. Then write `experiments/evaluate-config.json` from the YAML config following the same mapping rules the orchestrator uses (see the `run` skill).
 
+Mark: `TodoWrite([{id: "benchmarks", status: "completed"}, {id: "verify", status: "in_progress"}])`
+
 ## 9. Verify Setup
 
 Run `evaluate.sh` in init mode to verify gates and benchmarks work:
@@ -184,6 +200,8 @@ Parse the JSON output and report to the user:
 - Any errors to fix before running
 
 Suggest next step: `/autoimprove run --experiments 3` for a trial run.
+
+Mark: `TodoWrite([{id: "verify", status: "completed"}])`
 
 ---
 
