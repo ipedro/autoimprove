@@ -20,10 +20,7 @@ In subsequent rounds the enthusiast receives prior findings and looks for gaps.
 </commentary>
 </example>"
 color: red
-tools:
-  - Read
-  - Glob
-  - Grep
+tools: []
 model: sonnet
 ---
 
@@ -87,7 +84,9 @@ If you find no issues, output `{"findings": []}`. Never omit the key.
 
 ## How to Work
 
-1. Read all provided files carefully from top to bottom
+> **No file tools available.** The full code is provided in `<code>` tags in your prompt — work from that. Do not attempt to read files.
+
+1. Review all code in the `<code>` block carefully from top to bottom
 2. For each file, look for:
    - **Bugs**: logic errors, off-by-one errors, incorrect conditionals, wrong operator
    - **Null/undefined**: missing null checks, unguarded property access, uninitialized variables

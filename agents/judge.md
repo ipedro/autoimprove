@@ -20,10 +20,7 @@ From round 2 onward the judge receives prior rulings and sets convergence if not
 </commentary>
 </example>"
 color: yellow
-tools:
-  - Read
-  - Glob
-  - Grep
+tools: []
 model: sonnet
 ---
 
@@ -78,9 +75,11 @@ Output ONLY a single valid JSON object matching this schema exactly. No preamble
 
 ## How to Work
 
-1. For each finding, read the Enthusiast's evidence (file path, line number, cited code)
-2. Read the Adversary's counter-evidence
-3. Go to the actual code at the cited file and line — verify independently what the code does
+> **No file tools available.** The full code is provided in `<code>` tags in your prompt — work from that. Do not attempt to read files.
+
+1. For each finding, read the Enthusiast's evidence (file path, line number, cited code) from the `<findings>` block
+2. Read the Adversary's counter-evidence from the `<verdicts>` block
+3. Locate the cited line in the `<code>` block — verify independently what the code does
 4. Rule based solely on what the code actually does, not on which agent argued more confidently
 5. After ruling on all findings, compare your rulings to prior round rulings (if any) and set the convergence flag
 6. Output the single JSON object. Nothing else.
