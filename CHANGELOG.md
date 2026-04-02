@@ -2,6 +2,29 @@
 
 All notable changes to autoimprove are documented here.
 
+## [0.4.0] — 2026-04-02 — Mechanical AR Chain + Idea Matrix --brief
+
+### Changed
+- `refactor(adversarial-review)`: E→A→J chain is now mechanical — no interpretation, exact dispatch syntax, compliance gates, adaptive mode (LIGHTWEIGHT for single files, FULL for specs/plans)
+- `refactor(adversarial-review)`: agent prompts condensed, redundant schema instructions removed
+
+### Added
+- `feat(adversarial-review)`: model escalation ladder on convergence/near-convergence (#81)
+- `feat(adversarial-review)`: anomaly auto-escalation to Sonnet on malformed/sparse output
+- `feat(idea-matrix)`: `--brief` flag for superpowers pipeline handoff (brainstorming→matrix→AR)
+- `feat(idea-matrix)`: `--from-spec` flag accepts superpowers brainstorming spec as context
+- `feat(idea-matrix)`: visual digest — static HTML heatmap + winner card
+- `feat(run)`: visual digest at end of session
+- `feat(run)`: TaskTree orchestration for experiment loop
+- `feat(track)`: new skill design spec + AR-reviewed implementation plan (not yet implemented)
+
+### UX
+- `ux(*)`: emoji labels and TodoWrite progress tracking across all major skills
+- `ux(idea-matrix)`: agent panel description `Idea #N — [3-word theme]` format
+- `ux(adversarial-review)`: task titles updated with findings counts on completion
+
+---
+
 ## [0.3.0] — 2026-04-01 — AR Smoke Gate
 
 ### Added
