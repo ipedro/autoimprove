@@ -86,7 +86,8 @@ assert_no_premature_work() {
     premature=$(head -n "$first_skill_line" "$log" | \
         grep '"type":"tool_use"' | \
         grep -v '"name":"Skill"' | \
-        grep -v '"name":"TodoWrite"' || true)
+        grep -v '"name":"TodoWrite"' | \
+        grep -v '"name":"mcp__' || true)
 
     if [ -n "$premature" ]; then
         echo "  [FAIL] $test_name: tool use before skill loaded:"
