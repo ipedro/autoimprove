@@ -29,7 +29,7 @@ Show a concise snapshot of the current autoimprove session: trust tier, active w
 
 ---
 
-# 1. Check Prerequisites
+# 1. 🩺 Check Prerequisites
 
 ```bash
 test -f autoimprove.yaml || echo "MISSING"
@@ -37,9 +37,26 @@ test -f autoimprove.yaml || echo "MISSING"
 
 If missing, print: `autoimprove is not initialized here. Run /autoimprove init.` and stop.
 
+Initialize progress tracking:
+
+```javascript
+TodoWrite([
+  { id: "prereqs",   content: "🩺 Check prerequisites",        status: "in_progress" },
+  { id: "state",     content: "📋 Read state files",           status: "pending" },
+  { id: "worktrees", content: "🔍 List active worktrees",      status: "pending" },
+  { id: "totals",    content: "📊 Parse experiment totals",    status: "pending" },
+  { id: "trust",     content: "✅ Compute trust tier progress", status: "pending" },
+  { id: "themes",    content: "🔄 Summarize theme state",      status: "pending" },
+  { id: "proposals", content: "💡 Check pending proposals",    status: "pending" },
+  { id: "output",    content: "📋 Format and print output",    status: "pending" },
+])
+```
+
+Mark `prereqs` done. Mark `state` in_progress.
+
 ---
 
-# 2. Read State Files
+# 2. 📋 Read State Files
 
 Read these files, noting which are absent:
 
@@ -51,9 +68,11 @@ Read these files, noting which are absent:
 
 If `state.json` is missing: print `No session started yet. Run /autoimprove run.` and stop.
 
+Mark `state` done. Mark `worktrees` in_progress.
+
 ---
 
-# 3. List Active Worktrees
+# 3. 🔍 List Active Worktrees
 
 ```bash
 git worktree list --porcelain
@@ -61,27 +80,35 @@ git worktree list --porcelain
 
 Filter for paths containing `autoimprove/`. Each active worktree is an experiment in progress. Extract: short path, branch name, HEAD SHA (first 8 chars).
 
+Mark `worktrees` done. Mark `totals` in_progress.
+
 ---
 
-# 4. Parse Experiment Totals
+# 4. 📊 Parse Experiment Totals
 
 From `experiments/experiments.tsv`, count rows by verdict: `kept`, `neutral`, `regress`, `fail`, `crash`. Extract the most recent row: id, timestamp, theme, verdict.
 
+Mark `totals` done with count (e.g., "📊 Parse experiment totals — N total"). Mark `trust` in_progress.
+
 ---
 
-# 5. Compute Trust Tier Progress
+# 5. ✅ Compute Trust Tier Progress
 
 From `autoimprove.yaml`, read the trust ratchet tiers. From `state.json`, read `trust_tier` and `consecutive_keeps`. Compute keeps remaining until next tier: `after_keeps - consecutive_keeps` from the next tier's config. If at tier 3 (propose-only), print "maximum tier reached."
 
+Mark `trust` done. Mark `themes` in_progress.
+
 ---
 
-# 6. Summarize Theme State
+# 6. 🔄 Summarize Theme State
 
 From `state.json`, read `theme_cooldowns` and `theme_stagnation`. In normal mode: list only stagnated themes (at or above `stagnation_window`) and count themes in cooldown. In `--verbose` mode: show the full cooldown table with remaining-count per theme and all non-zero stagnation counts.
 
+Mark `themes` done. Mark `proposals` in_progress.
+
 ---
 
-# 7. Check for Pending Proposals
+# 7. 💡 Check for Pending Proposals
 
 ```bash
 ls experiments/proposals-*.md 2>/dev/null | sort | tail -1
@@ -89,9 +116,11 @@ ls experiments/proposals-*.md 2>/dev/null | sort | tail -1
 
 Count `PROPOSAL #` occurrences in the latest file. If any found: `N proposal(s) pending — run /autoimprove proposals to review`.
 
+Mark `proposals` done. Mark `output` in_progress.
+
 ---
 
-# 8. Format Output
+# 8. 📋 Format Output
 
 ```
 autoimprove status — <project name> — <date>
@@ -125,6 +154,8 @@ Proposals                             ← only if pending proposals exist
 **Relative timestamps:** <1 min → "just now", <1 hour → "N minutes ago", <24 h → "N hours ago", older → "YYYY-MM-DD HH:MM".
 
 **Missing files:** Replace with `(not yet initialized)` rather than erroring.
+
+Mark `output` done in TodoWrite.
 
 ---
 

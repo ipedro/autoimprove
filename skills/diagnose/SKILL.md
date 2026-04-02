@@ -41,7 +41,19 @@ Parse arguments:
 
 ---
 
-# 1. Prerequisites Check
+# 1. 🩺 Prerequisites Check
+
+Initialize progress tracking:
+
+```javascript
+TodoWrite([
+  { id: "prereqs",    content: "🩺 Check prerequisites",           status: "in_progress" },
+  { id: "config",     content: "✅ Validate autoimprove.yaml",      status: "pending" },
+  { id: "gates",      content: "🔍 Dry-run gate commands",          status: "pending" },
+  { id: "benchmarks", content: "📊 Probe benchmark metric patterns", status: "pending" },
+  { id: "summary",    content: "📋 Summarize findings",             status: "pending" },
+])
+```
 
 ```bash
 test -f autoimprove.yaml || { echo "MISSING_CONFIG"; exit 1; }
@@ -61,9 +73,11 @@ Install with: brew install jq
 ```
 and stop.
 
+Mark `prereqs` done in TodoWrite. Mark `config` in_progress.
+
 ---
 
-# 2. Parse and Validate autoimprove.yaml
+# 2. ✅ Parse and Validate autoimprove.yaml
 
 Read `autoimprove.yaml`. Check for required top-level sections:
 
@@ -102,15 +116,17 @@ Print each finding on its own line:
 [ERROR]   benchmarks[0].metrics[1].direction: invalid value "ascending" (expected higher_is_better or lower_is_better)
 ```
 
-If `--config` was passed, stop here after printing the config findings.
+If `--config` was passed, stop here after printing the config findings. Mark `config` done in TodoWrite.
+
+Mark `config` done in TodoWrite. Mark `gates` in_progress.
 
 ---
 
-# 3. Validate Gate Commands
+# 3. 🔍 Validate Gate Commands
 
 For each gate in `autoimprove.yaml`:
 
-## 3a. Run the gate command
+## 3a. 🔄 Run the gate command
 
 ```bash
 cd <project.path>
@@ -119,7 +135,7 @@ cd <project.path>
 
 Cap output capture at 200 lines (truncate with a note if exceeded).
 
-## 3b. Report gate result
+## 3b. 📋 Report gate result
 
 ```
 Gate: <name>
@@ -130,7 +146,7 @@ Gate: <name>
 
 If the gate fails (non-zero exit), label it `[BROKEN]`. If it passes, label it `[OK]`.
 
-## 3c. Detect common gate failure patterns
+## 3c. ⚠️ Detect common gate failure patterns
 
 After running all gates, look for these patterns in the output:
 
@@ -143,15 +159,15 @@ After running all gates, look for these patterns in the output:
 | `error[E0`: Rust compile error | Code won't compile — fix before autoimprove can run |
 | `cannot find package` | Go module issue — suggest `go mod tidy` |
 
-Print the diagnosis below each broken gate.
+Print the diagnosis below each broken gate. Update TodoWrite: mark `gates` done with count (e.g., "🔍 Dry-run gate commands — N/N passed"). Mark `benchmarks` in_progress.
 
 ---
 
-# 4. Validate Benchmark Commands and Metric Extraction
+# 4. 📊 Validate Benchmark Commands and Metric Extraction
 
 For each benchmark in `autoimprove.yaml`:
 
-## 4a. Run the benchmark command
+## 4a. 🔄 Run the benchmark command
 
 ```bash
 cd <project.path>
@@ -159,14 +175,14 @@ BENCH_OUTPUT=$(mktemp)
 <benchmark.command> > "$BENCH_OUTPUT" 2>&1; BENCH_EXIT=$?
 ```
 
-## 4b. Check benchmark exit code
+## 4b. ✅ Check benchmark exit code
 
 A non-zero exit is suspicious but not always fatal (some benchmarks exit 1 when counts are zero). Note it:
 ```
 [WARNING] benchmark "<name>" exited with code N — check if this is expected.
 ```
 
-## 4c. Probe each metric's extract pattern
+## 4c. 🔍 Probe each metric's extract pattern
 
 For each metric under this benchmark, test the extract pattern against the actual output:
 
@@ -229,7 +245,7 @@ If any check fails, print:
   Tip:       Run: <benchmark.command> | sed -n '<N>p'
 ```
 
-## 4d. Print benchmark summary
+## 4d. 📋 Print benchmark summary
 
 ```
 Benchmark: <name>
@@ -241,9 +257,11 @@ Benchmark: <name>
     lint_errors     [BROKEN] → null (expected json:.lint.errors_count)
 ```
 
+Update TodoWrite: mark `benchmarks` done with count (e.g., "📊 Probe benchmark metric patterns — N/M ok"). Mark `summary` in_progress.
+
 ---
 
-# 5. (Optional) Single-Metric Deep Dive — `--metric METRIC_NAME`
+# 5. 🔍 (Optional) Single-Metric Deep Dive — `--metric METRIC_NAME`
 
 If `--metric` was passed, find the named metric across all benchmarks and run only its checks (steps 4a–4c for that metric). Print the full raw benchmark output (not truncated) so the user can inspect the exact structure manually.
 
@@ -259,7 +277,7 @@ Then run the extract probe and show its result. This mode is most useful when de
 
 ---
 
-# 6. Summarize Findings
+# 6. 📋 Summarize Findings
 
 After all checks complete, print a consolidated summary:
 
@@ -290,9 +308,11 @@ Diagnosis
 - **Warnings only** — `N warning(s). The loop will run but may produce confusing results.`
 - **Errors** — `N error(s) found. Fix before running /autoimprove run.`
 
+Mark `summary` done in TodoWrite.
+
 ---
 
-# 7. Common Failure Patterns and Fixes
+# 7. ⚠️ Common Failure Patterns and Fixes
 
 The diagnose skill recognizes these failure signatures and prints actionable fixes:
 
