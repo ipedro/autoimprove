@@ -204,6 +204,7 @@ Scoring guide:
 ```
 
 **Agent configuration:**
+- `description`: `"Idea #N — [3-word theme]"` — 3 words capturing the core bet of this cell (e.g., `"Idea #4 — strict then weighted"`, `"Idea #8 — keep-rate adaptive"`). This is what appears in the agent panel UI — match the intention-first style of the TodoWrite labels.
 - Model: `haiku`
 - Tools: none (agents reason about pre-digested context only)
 
