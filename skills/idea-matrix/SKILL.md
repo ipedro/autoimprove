@@ -20,7 +20,7 @@ description: |
   assistant: I'll use idea-matrix to generate a convergence report across all three strategies.
   <commentary>"Convergence report" is a direct trigger phrase.</commentary>
   </example>
-argument-hint: "<problem statement> + <options list> [--brief]"
+argument-hint: "<problem statement> + <options list> [--brief] [--from-spec <spec-path>]"
 allowed-tools: [Read, Glob, Grep, Bash, Agent, TodoWrite]
 ---
 
@@ -39,6 +39,7 @@ From the user's input (or the current conversation context), extract:
 - **problem**: The design problem or decision being explored
 - **options**: A list of design options (minimum 3). Each option has a short label and a description.
 - **brief_mode**: `true` if `--brief` flag is present, `false` otherwise. In brief mode, skip the full score table and dimension aggregates — output only the winner summary (see step 6).
+- **SPEC_PATH**: if `--from-spec <path>` is present, store the path after resolving it from the current working directory. Paths may be relative or absolute.
 
 If the user provided options inline (e.g., "A: hooks, B: skill, C: stop hook"), use those directly.
 
@@ -50,6 +51,7 @@ Store as:
 
 ```
 PROBLEM = "<problem statement>"
+SPEC_PATH = "<resolved spec path>" # if --from-spec was provided
 OPTIONS = [
   { label: "A", name: "<short name>", description: "<what this option does>" },
   { label: "B", name: "<short name>", description: "<what this option does>" },
@@ -118,6 +120,9 @@ TodoWrite([
 **This is the critical step.** YOU (the orchestrator, running on the main model) do the hard work of researching the codebase. Haiku agents receive pre-digested context only — they never touch the codebase.
 
 **3a. Research the codebase:**
+If `SPEC_PATH` is set, read that Markdown spec and build `BRIEF` from its intro/early sections: extract the problem or decision, architecture constraints (stack, patterns, file references), and any options already explored. The spec was written by superpowers brainstorming and contains sufficient architecture context. Do not re-read the codebase. Skip 3a and continue with 3b-3d using the spec-derived brief.
+
+If `SPEC_PATH` is not set:
 - Read all files relevant to the design problem (architecture, config, key modules)
 - Check recent commits for context on current direction
 - Identify patterns, conventions, and constraints that would affect each option
