@@ -58,7 +58,7 @@ Store: `RUN_ID`, `RUN_DIR=~/.autoimprove/runs/<RUN_ID>`.
 
 **Write `$RUN_DIR/meta.json`:**
 ```json
-{ "run_id": "<RUN_ID>", "target": "<target>", "date": "<ISO>", "mode": "<MODE>", "max_rounds": <N>, "rounds_completed": 0, "status": "running" }
+{ "run_id": "<RUN_ID>", "target": "<target>", "date": "<ISO>", "mode": "<MODE>", "rounds_planned": <N>, "rounds_completed": 0, "status": "running" }
 ```
 
 **Initialize state:**
@@ -169,9 +169,9 @@ Find issues NOT in the blocklist only.</if>"
 - Split into `NOVEL_FINDINGS` (no match) and `DUPLICATE_FINDINGS` (matched).
 - If duplicates exist: log `"Auto-dismissed {N} duplicate(s): {locations}"`.
 - Replace `ENTHUSIAST_OUTPUT.findings` with `NOVEL_FINDINGS`.
-- If `NOVEL_FINDINGS` is empty: skip 3B and 3C, go to 3D (convergence path).
+Mark todo complete: `{id: "enthusiast", content: "🔍 AR Round {ROUND}: Enthusiast ({NOVEL_FINDINGS.length} findings)", status: "completed"}`.
 
-Mark todo complete: `{id: "enthusiast", content: "🔍 AR Round {ROUND}: Enthusiast — {NOVEL_FINDINGS.length} findings", status: "completed"}`.
+- If `NOVEL_FINDINGS` is empty: skip 3B and 3C, go to 3D (convergence path).
 
 ---
 
@@ -201,7 +201,7 @@ Healthy challenge rate: 15–25%. Validating 100% without pushback = insufficien
 
 **Compliance check:** `ADVERSARY_OUTPUT.verdicts` must contain one entry per finding in `NOVEL_FINDINGS`. If count mismatches: log `"adversary_verdict_count_mismatch: expected {N}, got {M}"` — proceed anyway.
 
-Mark todo: `{id: "adversary", content: "⚔️ AR Round {ROUND}: Adversary — {challenged_count} challenged", status: "completed"}` where `challenged_count` = verdicts where verdict != "valid".
+Mark todo: `{id: "adversary", content: "⚔️ AR Round {ROUND}: Adversary ({challenged_count} challenged)", status: "completed"}` where `challenged_count` = verdicts where verdict != "valid".
 
 ---
 
@@ -236,7 +236,7 @@ Set convergence:true only if ALL (file,line,winner,final_severity) tuples match 
 
 **Count results:** `confirmed_count` = rulings where winner ∈ {enthusiast, split}; `debunked_count` = rulings where winner = adversary.
 
-Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — {confirmed_count} confirmed, {debunked_count} debunked", status: "completed"}`.
+Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge ({confirmed_count} confirmed, {debunked_count} debunked)", status: "completed"}`.
 
 **Update state:**
 - Append confirmed `(file, line)` tuples to `CONFIRMED_LOCATIONS`.
@@ -244,12 +244,11 @@ Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — {confirme
 - Store `PRIOR_JUDGE_SUMMARY = JUDGE_OUTPUT.summary`.
 
 **Model escalation (FULL mode only — skip entirely if MODE == LIGHTWEIGHT):**
-- Path A (anomaly): if any `*_malformed_json` logged this round → `ROUND_MODEL = "sonnet"`.
-- Path B (judge recommendation): use `JUDGE_OUTPUT.next_round_model` (default `"haiku"`).
-- Path A takes priority over Path B.
+- Path A (anomaly): if any `*_malformed_json` logged this round → `ROUND_MODEL = "sonnet"`. Set `escalated_this_round = true`.
+- Path B (judge recommendation): use `JUDGE_OUTPUT.next_round_model` if not already escalated by Path A (Path A takes priority). Note: `next_round_model` is an undocumented extension to the judge schema; if absent, default to `"haiku"`.
 - If `ROUND_MODEL == "sonnet"` for 3+ consecutive rounds: log `"[COST WARNING] Sonnet active 3 consecutive rounds."`
 
-**Write `$RUN_DIR/round-{ROUND}.json`:** `{round, run_id, model, enthusiast, adversary, judge, errors, converged}` — omit `errors` if empty.
+**Write `$RUN_DIR/round-{ROUND}.json`:** `{round, run_id, model, enthusiast, adversary, judge, errors, converged}` — omit `errors` if empty. Also append this object to the `ROUNDS` array in state.
 
 ---
 
@@ -257,13 +256,14 @@ Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — {confirme
 
 **Append** `NOVEL_FINDINGS.length` to `ROUND_YIELDS`.
 
-**Empty-findings shortcut:** If `NOVEL_FINDINGS.length == 0` this round → `converged = true`.
+**Empty-findings shortcut:** If `NOVEL_FINDINGS.length == 0` this round AND `ROUND > 1` → `converged = true; converged_at_round = ROUND`.
+_(Round 1 exception: zero findings on round 1 means nothing was found — exit with empty results. This is not premature convergence. The compliance rule "Round 1 convergence = always false" applies to the Judge's self-report, not to the empty-findings shortcut.)_
 
 **Deterministic check (round > 1, when findings exist):**
 - Extract `(file, line, winner, final_severity)` tuples from this round's rulings AND prior round's rulings.
 - Apply ±5-line tolerance: normalize each tuple to its cluster's lowest line. Clustering is **pairwise** — two findings are in the same cluster if their lines are within ±5 of each other directly (not transitively). Each cluster's representative is its minimum line number.
 - For `file: null` findings: use `(null, first-60-chars-of-resolution, winner, final_severity)`.
-- If normalized sets are identical → `converged = true`.
+- If normalized sets are identical → `converged = true; converged_at_round = ROUND`.
 - If Judge reported `convergence: true` but deterministic check says false: log `"Judge convergence overridden by deterministic check."` and continue.
 - Round 1 guard: if `ROUND == 1` and Judge returned `convergence: true` → override to `false`. Log: `"convergence: true ignored on round 1."`.
 
@@ -276,14 +276,20 @@ prev_yield = ROUND_YIELDS[-2] if len >= 2 else null
 
 near_convergence = current_yield <= 2 AND prev_yield != null AND current_yield < prev_yield * 0.4
 
-if converged OR near_convergence:
+# Guard: if 3C already escalated this round (escalated_this_round = true), skip near-convergence
+# escalation to avoid double-jumping the model tier in a single round.
+if NOT escalated_this_round AND (converged OR near_convergence):
   if ROUND_MODEL == "opus": converged = true (final stop)
   else:
-    next_model = MODEL_LADDER[MODEL_LADDER.index(ROUND_MODEL) + 1]
-    ROUND_MODEL = next_model
-    converged = false
-    Log: "Round {N}: escalating to {next_model} (yield={current_yield})"
-    Re-emit todos as pending for round {N+1}
+    # Guard: if convergence was from deterministic check (not near-convergence), skip escalation.
+    # Escalating after true convergence produces a wasted round that re-converges immediately.
+    if converged AND NOT near_convergence: skip escalation (stay converged)
+    else:
+      next_model = MODEL_LADDER[MODEL_LADDER.index(ROUND_MODEL) + 1]
+      ROUND_MODEL = next_model
+      converged = false
+      Log: "Round {N}: escalating to {next_model} (yield={current_yield})"
+      Re-emit todos as pending for round {N+1}
 ```
 
 ## Round 2 Gate (after Round 1 only)
@@ -316,10 +322,10 @@ Note: This gate applies ONLY after Round 1. Rounds 2+ always proceed if the Judg
 {For each winner=adversary: - ~~{description}~~ — {adversary reasoning}}
 ### Unresolved Findings (if judge_malformed_json occurred)
 ### Summary
-{JUDGE_OUTPUT.summary} | {if converged: "Converged at round N."} | {if errors: "Warning: N round(s) had agent errors."}
+{JUDGE_OUTPUT.summary} | {if converged: "Converged at round {converged_at_round}."} | {if errors: "Warning: N round(s) had agent errors."}
 ```
 
-Structured JSON: `{"total_rounds": N, "converged_at_round": null, "confirmed": [...], "debunked": [...], "by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0}}`
+Structured JSON: `{"total_rounds": N, "converged_at_round": converged_at_round, "confirmed": [...], "debunked": [...], "by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0}}`
 
 **Self-Assessment:**
 ```
@@ -347,9 +353,9 @@ Before leaving the execution flow, close all todos explicitly:
 
 ```javascript
 TodoWrite([
-  {id: "enthusiast", status: "completed"},
-  {id: "adversary", status: "completed"},
-  {id: "judge", status: "completed"}
+  {id: "enthusiast", content: "✅ AR complete", status: "completed"},
+  {id: "adversary",  content: "✅ AR complete", status: "completed"},
+  {id: "judge",      content: "✅ AR complete", status: "completed"}
 ])
 ```
 
