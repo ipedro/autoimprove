@@ -2,7 +2,7 @@
 name: adversarial-review
 description: "Run an adversarial Enthusiast→Adversary→Judge debate review on code. Automatically converges — no manual round control needed. Use when the user says 'adversarial review', 'debate review', 'run a review round', 'do a review round', 'review code with debate agents', 'i want an adversarial review', or '/autoimprove review'. Do NOT trigger on generic 'review' requests or PR reviews. Takes a file, diff, or PR as target."
 argument-hint: "[file|diff]"
-allowed-tools: [Read, Glob, Grep, Bash, Agent, TodoWrite]
+allowed-tools: [Read, Glob, Grep, Bash, Agent, TodoWrite, TodoRead]
 ---
 
 <SKILL-GUARD>
@@ -82,7 +82,7 @@ converged = false
 ## Target Type Detection
 
 After resolving `TARGET_PATH`:
-- If `TARGET_PATH` ends with `.md` AND (contains `"Implementation Plan"` OR `"Spec"` OR `"Design"` OR `"Plan"` in its first 20 lines OR is explicitly in a `docs/superpowers/` path): set `TARGET_TYPE = "spec"`
+- If `TARGET_PATH` ends with `.md` AND (contains a markdown heading `## Implementation Plan`, `## Spec`, `## Design`, or `## Plan` (heading format only, not bare substring) in its first 20 lines OR is explicitly in a `docs/superpowers/` path): set `TARGET_TYPE = "spec"`
 - Otherwise: set `TARGET_TYPE = "code"`
 
 ```
@@ -139,6 +139,7 @@ Mark todo: `{id: "enthusiast", status: "in_progress"}`.
 
 **Build CONFIRMED_LOCATIONS list** (round > 1 only):
 Extract `(file, line)` from all prior rulings where `winner` = `"enthusiast"` or `"split"`. Format: `"src/foo.ts:42, src/bar.ts:17"`.
+_(Note: ±5-line dedup tolerance at pre-adversary dedup step may suppress distinct new findings that happen to be near confirmed ones. This is intentional — prefer fewer false duplicates over rare missed nearby findings.)_
 
 **Dispatch — use EXACTLY this Agent call:**
 ```
@@ -148,8 +149,11 @@ Agent(
   prompt: "[AR Round {ROUND} — {MODE}] Review the code below. Output ONLY valid JSON per your schema.
 <brief>{CONTEXT_BRIEF}</brief>
 <code>{TARGET_CODE}</code>
-{IF round>1: "BLOCKLIST (do not re-raise): {CONFIRMED_LOCATIONS}\nPrior summary: {PRIOR_JUDGE_SUMMARY}\nFind issues NOT in the blocklist only."}"
+<if round > 1>BLOCKLIST (do not re-raise): {CONFIRMED_LOCATIONS}
+Prior summary: {PRIOR_JUDGE_SUMMARY}
+Find issues NOT in the blocklist only.</if>"
 )
+# Note: <if condition>...</if> blocks are conditional inclusions — include the content only when the condition is true, omit otherwise.
 ```
 
 **Validate output (MANDATORY — do not skip):**
@@ -217,8 +221,9 @@ Agent(
 <code>{TARGET_CODE}</code>
 <findings>{ENTHUSIAST_OUTPUT}</findings>
 <verdicts>{ADVERSARY_OUTPUT}</verdicts>
-{IF round>1: "Prior rulings: {PRIOR_JUDGE_OUTPUT}\nSet convergence:true only if ALL (file,line,winner,final_severity) tuples match prior round."}
-{IF MODE==FULL: "Set next_round_model='sonnet' if: security findings, critical/high multi-file, 0% debunk rate, or strong E/A disagreement. Otherwise 'haiku'."}"
+<if round > 1>Prior rulings: {PRIOR_JUDGE_OUTPUT}
+Set convergence:true only if ALL (file,line,winner,final_severity) tuples match prior round.</if>
+<if MODE == FULL>Set next_round_model='sonnet' if: security findings, critical/high multi-file, 0% debunk rate, or strong E/A disagreement. Otherwise 'haiku'.</if>"
 )
 ```
 
@@ -238,7 +243,7 @@ Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — {confirme
 - Store `PRIOR_JUDGE_OUTPUT = JUDGE_OUTPUT`.
 - Store `PRIOR_JUDGE_SUMMARY = JUDGE_OUTPUT.summary`.
 
-**Model escalation (FULL mode only):**
+**Model escalation (FULL mode only — skip entirely if MODE == LIGHTWEIGHT):**
 - Path A (anomaly): if any `*_malformed_json` logged this round → `ROUND_MODEL = "sonnet"`.
 - Path B (judge recommendation): use `JUDGE_OUTPUT.next_round_model` (default `"haiku"`).
 - Path A takes priority over Path B.
@@ -256,14 +261,16 @@ Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — {confirme
 
 **Deterministic check (round > 1, when findings exist):**
 - Extract `(file, line, winner, final_severity)` tuples from this round's rulings AND prior round's rulings.
-- Apply ±5-line tolerance: normalize each tuple to its cluster's lowest line.
+- Apply ±5-line tolerance: normalize each tuple to its cluster's lowest line. Clustering is **pairwise** — two findings are in the same cluster if their lines are within ±5 of each other directly (not transitively). Each cluster's representative is its minimum line number.
 - For `file: null` findings: use `(null, first-60-chars-of-resolution, winner, final_severity)`.
 - If normalized sets are identical → `converged = true`.
 - If Judge reported `convergence: true` but deterministic check says false: log `"Judge convergence overridden by deterministic check."` and continue.
 - Round 1 guard: if `ROUND == 1` and Judge returned `convergence: true` → override to `false`. Log: `"convergence: true ignored on round 1."`.
 
-**Near-convergence escalation (FULL mode only):**
+**Near-convergence escalation (FULL mode only — skip this entire block if MODE == LIGHTWEIGHT):**
 ```
+if MODE != "FULL": skip to "Increment" below
+
 current_yield = ROUND_YIELDS[-1]
 prev_yield = ROUND_YIELDS[-2] if len >= 2 else null
 
@@ -285,7 +292,7 @@ After Round 1 Judge output, before incrementing `ROUND`:
 - Count confirmed findings: `confirmed_count = rulings where winner ∈ {enthusiast, split}`
 - Count medium+ findings: `medium_plus = confirmed findings where final_severity ∈ {medium, high, critical}`
 
-If `confirmed_count < 3` OR `medium_plus == 0`:
+If `confirmed_count < 3` AND `medium_plus == 0`:
 - Log: `"round2_skipped: confirmed={confirmed_count}, medium+={medium_plus} — below threshold"`
 - Skip to final report: exit the loop and go directly to STEP 4
 
@@ -293,7 +300,7 @@ Otherwise, proceed to Round 2 normally.
 
 Note: This gate applies ONLY after Round 1. Rounds 2+ always proceed if the Judge says not converged.
 
-**Increment:** `ROUND += 1`.
+**Increment:** `ROUND += 1`. ← happens AFTER Round 2 Gate and AFTER loop-decision check; do not increment before the gate.
 
 **Loop decision:** If `converged = true` OR `ROUND > MAX_ROUNDS` → exit loop. Otherwise → go to STEP 3A.
 
@@ -354,7 +361,7 @@ TodoWrite([
 |------|-----------------|
 | 3A before 3B | Adversary dispatched without ENTHUSIAST_OUTPUT → abort, re-run from 3A |
 | 3B before 3C | Judge dispatched without ADVERSARY_OUTPUT → log error, use `{"verdicts": []}` |
-| Each agent uses exact subagent_type | `autoimprove:enthusiast` / `autoimprove:adversary` / `autoimprove:judge` |
+| Each agent uses exact subagent_type | `AGENT_ENTHUSIAST` / `AGENT_ADVERSARY` / `AGENT_JUDGE` (resolved in Step 2a) |
 | Output validated before passing forward | Invalid → one re-prompt → fallback (never skip validation) |
 | Convergence = deterministic check only | Judge self-report overridden when it disagrees |
 | Round 1 convergence = always false | No exception |
