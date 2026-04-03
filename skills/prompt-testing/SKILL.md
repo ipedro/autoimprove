@@ -27,6 +27,32 @@ allowed-tools: [Read, Write, Bash, Glob, Grep]
 
 # Prompt Testing
 
+## When This Skill is Invoked
+
+When given a skill or agent name, write test files — don't explain theory.
+
+**For skills** (default starting point — unit tests):
+1. Read the target skill's SKILL.md
+2. Extract 6–10 behavioral claims: things the skill says it does, requires, or produces
+3. For each claim, write one `run_claude` unit test that asks a natural language question about the skill content
+4. Also write 2–3 triggering tests with natural language prompts (no skill name in the prompt)
+5. Write the test file to `test/skills/test-<skill-name>.sh`
+
+**For agents** (agent tests):
+1. Read the target agent's `.md`
+2. Write a `run_as_agent` test that injects a scenario and asserts on the JSON output
+3. Write to `test/agents/test-<agent-name>.sh`
+
+**Prompt pattern (unit test):**
+```
+"In the <skill-name> skill, what is <specific behavior>?"
+"Does the <skill-name> skill require <X>? What should <Y> do?"
+"What happens in <skill-name> when <scenario>?"
+```
+This is the canonical pattern — see the gold standard reference below.
+
+---
+
 ## Overview
 
 Claude Code skills and agents are tested by running `claude -p` in headless mode and asserting on the output. There are four test types — using the wrong one is the most common mistake.
@@ -34,6 +60,7 @@ Claude Code skills and agents are tested by running `claude -p` in headless mode
 **Core principles:**
 1. Never use self-reported JSON (`{"invoke": true}`) to test triggering. Claude says "yes" even when the Skill tool wouldn't actually fire. Only `--output-format stream-json` tells you what actually happened.
 2. Always use `--model haiku` for prompt tests. Triggering tests only verify tool dispatch, not output quality — haiku is ~60x cheaper than Opus and sufficient. Expose via `TEST_MODEL` env var for override.
+3. **Triggering test prompts must be natural language. Never include the skill name.** `"use the briefing skill"` always triggers — it tests nothing. `"what happened this week?"` is a real test. This is the most common failure mode.
 
 ---
 
@@ -171,6 +198,23 @@ fi
 
 **Negative tests matter**: Also test prompts that should NOT trigger the skill (`run the test suite`, `start the grind loop`) to verify the skill isn't over-eager.
 
+### ⚠️ Cheat Mode vs Natural Language
+
+The hardest part of a triggering test is writing prompts that actually test routing. Cheat mode prompts always pass — they prove nothing.
+
+| Mode | Example | Problem |
+|------|---------|---------|
+| ❌ Cheat mode | `"use the briefing skill"` | Skill name in prompt — always fires |
+| ❌ Cheat mode | `"invoke adversarial-review"` | Explicit invocation — always fires |
+| ❌ Cheat mode | `"run the idea-matrix skill"` | Same |
+| ✅ Natural language | `"what happened this week?"` | Tests real routing from user intent |
+| ✅ Natural language | `"check my code for issues"` | Tests real routing from user intent |
+| ✅ Natural language | `"which design option is better?"` | Tests real routing from user intent |
+
+**Rule:** The prompt must be something a user would type without knowing the skill exists. If the skill name or any of its trigger keywords appear in the prompt, the test is cheat mode.
+
+**Source real prompts from actual usage.** Search `lcm grep` or `git log` for how the user actually invoked the skill. Real session history beats invented examples.
+
 ---
 
 ## ✅ Type 4: Explicit Request Test
@@ -238,6 +282,7 @@ Organize triggering tests into sections by prompt source and intent. This struct
 
 | Mistake | Why it fails | Fix |
 |---------|-------------|-----|
+| `"use the X skill"` as a triggering prompt | Cheat mode — skill name in prompt guarantees a match, tests nothing | Use natural language without skill names: `"what happened this week?"` not `"use briefing"` |
 | `{"would_trigger": true}` for triggering tests | Claude self-reports based on reasoning, not actual tool dispatch | Use `--output-format stream-json` + `"name":"Skill"` grep |
 | Missing `--plugin-dir` | Claude Code loads user's installed plugins, not the dev version | Always pass `--plugin-dir` for triggering/explicit tests |
 | Missing `--dangerously-skip-permissions` | Claude Code prompts for permission confirmation in headless mode | Required for non-interactive test runs |
@@ -272,18 +317,31 @@ claude -p "$PROMPT" \
 
 ---
 
-## 📝 Real Examples
+## 📝 Real Examples — Gold Standard
 
-These are production tests for this plugin — read them as working reference:
+**Unit test gold standard** — read this before writing any tests:
 
-- `tests/agents/test-judge.sh` — Type 2: JSON assertions on judge output (convergence, schema)
-- `tests/agents/test-enthusiast.sh` — Type 2: JSON assertions on enthusiast output (schema, severity values, sequential IDs)
-- `tests/agents/test-adversary.sh` — Type 2: JSON assertions on adversary output (verdict coverage)
-- `tests/skills/test-review.sh` — Types 1+3+4: unit content, triggering, and explicit request tests for the review skill
+`~/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/tests/claude-code/test-subagent-driven-development.sh`
 
-Shared helpers:
-- `tests/agents/test-helpers.sh` — `run_as_agent()`, `extract_json()`, `assert_json_*`
-- `tests/skills/test-helpers.sh` — `run_with_plugin()`, `assert_skill_triggered()`, `assert_no_premature_work()`
+This is the reference implementation. Every test follows the same pattern:
+```bash
+output=$(run_claude "In the subagent-driven-development skill, what comes first: spec compliance review or code quality review?" 30)
+assert_contains "$output" "spec.*compliance" "Spec compliance before code quality"
+```
+
+Key qualities to match:
+- Prompts are natural language questions about skill content — never `"use the skill"` or `"invoke"`
+- Each test verifies one specific behavioral claim from the skill doc
+- 6–10 tests per skill, one claim per test
+- Tests use `assert_contains`, `assert_not_contains`, `assert_order` — no complex logic
+
+**Helpers reference:**
+`~/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/tests/claude-code/test-helpers.sh`
+
+For autoimprove agents specifically:
+- `test/agents/test-judge.sh` — Type 2: JSON assertions on judge output
+- `test/agents/test-enthusiast.sh` — Type 2: schema, severity, sequential IDs
+- `test/agents/test-adversary.sh` — Type 2: verdict coverage
 
 ---
 
