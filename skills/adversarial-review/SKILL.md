@@ -30,7 +30,7 @@ Measure target size first. Mode gates max rounds and prompt depth.
 | Single file OR diff ≤ 150 lines | `LIGHTWEIGHT` | 3 |
 | Multi-file OR diff > 150 lines | `FULL` | 10 |
 
-**.md override:** If the target is a single `.md` file, force `FULL` mode regardless of line count. Design specs generate ~14 findings/round vs ~3 for equivalent code — the line-count heuristic does not apply.
+**.md override:** If the target is a `.md` file, force `FULL` mode regardless of line count. Design specs generate ~14 findings/round vs ~3 for equivalent code — the line-count heuristic does not apply.
 
 Log: `"[AR] Mode: {MODE} ({N} lines, max_rounds: {MAX_ROUNDS})"`. If `.md` override applied, append `" [spec-mode: .md override]"` to the log line.
 
@@ -164,7 +164,7 @@ Agent(
 
 **Pre-adversary dedup:**
 
-**Spec-target skip condition:** If ALL entries in `CONFIRMED_LOCATIONS` have `file: null` (i.e. this is a null-file/spec target), skip the pre-adversary dedup pass entirely: set `NOVEL_FINDINGS = ENTHUSIAST_OUTPUT.findings` and log `"[AR] Pre-dedup skipped: all confirmed locations are null-file (spec target) — Judge handles repetition via blocklist."`. Proceed directly to 3B.
+**Spec-target skip condition:** If `TARGET_TYPE == "spec"`, skip the pre-adversary dedup pass entirely: set `NOVEL_FINDINGS = ENTHUSIAST_OUTPUT.findings` and log `"[AR] Pre-dedup skipped: spec target (TARGET_TYPE=spec) — Judge handles repetition via blocklist."`. Proceed directly to 3B.
 
 Otherwise (code targets):
 - Extract `(file, line)` from each new finding.
