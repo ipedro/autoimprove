@@ -2,6 +2,42 @@
 
 All notable changes to autoimprove are documented here.
 
+## [0.5.0] — 2026-04-03 — AR Spec-Mode, Map-Mode, Reliability Metrics & Haiku Routing
+
+### Added
+- `feat(ar)`: spec-mode agents (enthusiast-spec, adversary-spec, judge-spec) with auto-routing — `.md` files get dedicated spec-calibrated E→A→J chain (#88, #81)
+- `feat(ar)`: `--map-mode [none|map|hybrid]` flag — structured map replaces full code context (map=~80% token savings, hybrid=~40-60% via REQUEST_SECTION injection) (#86)
+- `feat(ar)`: `target_type` field in findings schema (code/spec/config/docs) — inferred from file extensions (#81)
+- `feat(ar)`: file budget for R2+ — RELEVANT_FILES reduces context by ~70% on large multi-file reviews (#82)
+- `feat(ar)`: REVIEWED_FILES tracking to distinguish "never reviewed" from "reviewed but debunked" (#82)
+- `feat(run)`: configurable `experimenter_model` in autoimprove.yaml budget section — set to `haiku` for cost-optimized mode (#53)
+- `feat(themes)`: `execution_clarity` theme (weight 2) — improves prompts/docs for Haiku compatibility (#54)
+- `feat(benchmarks)`: 4 reliability metrics in self-metrics.sh — `revert_rate`, `bug_escape_rate`, `ar_severity_trend`, `fix_durability` (#62)
+- `feat(benchmarks)`: `type: deterministic|llm-judge` field + `--include-llm-benchmarks` flag in evaluate.sh (#61)
+- `feat(experiment)`: CRUD TUI — `/autoimprove experiment create/list/remove` with context.json management (#76)
+- `feat(idea-matrix)`: model escalation for synthesis step (hard path ≥3 anomalies → Sonnet, soft path complexity flag) (#85)
+- `feat(idea-matrix)`: telemetry run folder `~/.autoimprove/matrix-runs/<RUN_ID>/` (#84)
+- `feat(agents)`: manual quality pass — enthusiast, judge, judge-spec, idea-explorer, proposer, researcher (#93)
+- `feat(ar)`: `ar-write-round.sh` helper script for round telemetry — prevents silent 0-byte files (#83)
+- `feat(track)`: `/track` skill + run integration (#89)
+- `feat(ci)`: plugin validation workflow
+
+### Fixed
+- `fix(ar)`: TARGET_TYPE check for spec dedup skip (was vacuously true on empty R1 list) (#88)
+- `fix(ar)`: REQUEST_SECTION integer validation + TOKEN_RATIO zero-guard (#86)
+- `fix(ar)`: target_type inference rule — inferred from file extensions, not TARGET_TYPE variable (#81)
+- `fix(ar)`: prevent silent 0-byte round-N.json on jq failure (#83)
+- `fix(benchmarks)`: robust ar_severity_trend grep (jq + grep fallback), mapfile portability (bash 3.2), timestamp dir filter (#62)
+- `fix(idea-matrix)`: status→error field name in model escalation check (#85)
+- `fix(idea-matrix)`: telemetry quality — verdict_type enum, skip clarity, key names (#84)
+- `fix(experiment)`: forbidden_paths schema + running experiment removal note (#76)
+
+### Research
+- `research`: Goodhart-safe model routing — idea-matrix convergence report. Winner: Alt2 (static heuristic) + C (quality-gate-first cost observation) (#55)
+- `research`: ruflo fault-tolerant consensus study (#97)
+
+---
+
 ## [0.4.0] — 2026-04-02 — Mechanical AR Chain + Idea Matrix --brief
 
 ### Changed
