@@ -50,12 +50,30 @@ TodoWrite([
 
 ## 1. Detect Project Type
 
-Look for these files to determine the project type:
-- `package.json` → Node.js (check for `test` script, TypeScript via `tsconfig.json`)
-- `pyproject.toml` or `setup.py` → Python (check for pytest, mypy)
-- `Cargo.toml` → Rust (cargo test, cargo clippy)
-- `go.mod` → Go (go test, go vet)
-- `.claude-plugin/plugin.json` → Claude Code plugin
+Look for these files to determine the project type (check in this priority order):
+
+1. `plugin.json` or `.claude-plugin/` directory → **Claude Code Plugin**
+2. `serve.sh` or a directory named `tools/` containing MCP handler files → **MCP server**
+3. `package.json` with no frontend framework (no `react`, `vue`, `svelte` in deps) → **CLI tool or Library/SDK**
+4. `package.json` with frontend framework → **Web app**
+5. `pyproject.toml` or `setup.py` → **Python library**
+6. `Cargo.toml` → **Rust**
+7. `go.mod` → **Go**
+8. Default (none of the above) → **Generic**
+
+After detecting, confirm with the user before proceeding:
+
+```
+Detected project type: Claude Code Plugin
+Is that right? (yes / no, it's a <type>)
+```
+
+Present the list of types if they say no: library, CLI, plugin, MCP server, web app, data pipeline, other.
+
+Also detect existing benchmark infrastructure:
+- Look for `test/`, `tests/`, `spec/`, `benchmark/`, `scripts/` directories
+- Look for CI config files: `.github/workflows/`, `.circleci/`, `Makefile`
+- If found, note: "I found existing test infrastructure — recommend wrapping it in `benchmark/metrics.sh` rather than creating from scratch"
 
 ## 2. Detect Test Command
 
@@ -80,22 +98,31 @@ Mark: `TodoWrite([{id: "detect", status: "completed"}, {id: "config", status: "i
 
 **Default to smart defaults — do not block on this question.**
 
-For any project with a test suite, the universal defaults work:
-- `test_count` — grep for test definitions in the test directory
-- `todo_count` — count TODO/FIXME in source files
+Use domain-appropriate metrics based on the detected project type:
 
-Proceed with these defaults unless the user specifically asks to customize. Do NOT ask an open-ended "what do you want to measure?" — that blocks users who don't know the answer.
+| Project Type | Default Metrics |
+|---|---|
+| Generic / unknown | test_count, todo_count |
+| Library/SDK | test_count, todo_count, api_coverage |
+| CLI tool | test_count, command_count, help_coverage |
+| Claude Code Plugin | test_count, skill_count, agent_completeness |
+| MCP server | test_count, tool_count, tool_doc_coverage |
+| Web app | test_count, bundle_size_kb, api_endpoint_coverage |
+| Data pipeline | test_count, pipeline_success_rate, data_quality_score |
 
-Only ask if the user has already indicated they want custom metrics (e.g., "I want to track coverage" or "I have my own benchmark script"). Present as a multiple-choice offer:
+Proceed with the type-appropriate defaults unless the user specifically asks to customize. Do NOT ask an open-ended "what do you want to measure?" — that blocks users who don't know the answer.
+
+Present the suggestion as a confirmable offer:
 
 ```
-Benchmark defaults: test_count + todo_count (good for any project).
-Want to add anything?
-  1. Use defaults → proceed (recommended)
-  2. Add test coverage (requires lcov or coverage.json output)
-  3. Add source lines of code
-  4. I have a custom benchmark script already
+Suggested metrics for <project type>: <metric_1>, <metric_2>, <metric_3>
+  1. Use these → proceed (recommended)
+  2. Use generic defaults instead (test_count + todo_count)
+  3. I have a custom benchmark script already — wrap it
+  4. Let me choose manually
 ```
+
+If the user already has a benchmark script (detected in step 1), option 3 is the recommended default: wrap the existing script in `benchmark/metrics.sh` that calls it and reformats output to JSON rather than creating from scratch.
 
 If the project is a Claude Code plugin (`.claude-plugin/plugin.json` detected), add `skill_behavior_tests` as a third default if the project has any test scripts that count passing assertions.
 
@@ -159,7 +186,23 @@ Mark: `TodoWrite([{id: "config", status: "completed"}, {id: "benchmarks", status
 
 ## 6. Create Benchmark Script if Needed
 
-If the user wants metrics that require a script, create `benchmark/metrics.sh`. Example:
+**If the project has existing test or benchmark scripts**, the recommended approach is to wrap them rather than create from scratch. Create `benchmark/metrics.sh` that calls the existing script and reformats its output to JSON:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Wrap existing test runner — capture its output and extract the metric
+test_output=$(npm test --silent 2>&1 || true)
+test_count=$(echo "$test_output" | grep -oP '\d+ passing' | grep -oP '\d+' || echo 0)
+
+echo "{\"test_count\": $test_count}"
+```
+
+This avoids duplicating test infrastructure and keeps metrics in sync with the real test suite.
+
+If there is no existing infrastructure, create `benchmark/metrics.sh` from scratch. Example:
 
 ```bash
 #!/usr/bin/env bash

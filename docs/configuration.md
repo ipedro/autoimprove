@@ -103,3 +103,23 @@ Each benchmark runs a command and extracts one or more metrics.
 Controls how much scope the experimenter gets as it earns trust. Tiers escalate after N consecutive keeps with zero regressions. Any regression drops one tier.
 
 Tier 3 changes are never auto-merged — they become proposals for human review.
+
+## Benchmark Design by Project Type
+
+The right metrics depend on what your project does. Generic metrics (test count, TODO count) work for any project but miss what actually matters. Here are suggested metrics by project type:
+
+| Project Type | Suggested Metrics |
+|---|---|
+| **Library/SDK** | test_count, api_coverage (public functions with tests), breaking_change_count |
+| **CLI tool** | test_count, command_count, help_coverage (commands with --help), binary_size_kb |
+| **Claude Code Plugin** | skill_count, agent_completeness (agents with When to Use + Constraints), command_doc_coverage |
+| **MCP server** | tool_count, routing_test_pass_rate, hook_latency_ms (must be <100ms), tool_doc_coverage |
+| **Web app** | test_count, lighthouse_score, bundle_size_kb, api_endpoint_coverage |
+| **Data pipeline** | test_count, pipeline_success_rate, data_quality_score, latency_p95_ms |
+
+**Designing meaningful metrics:**
+- Measure what users care about, not what's easy to measure
+- Each metric should have a clear direction (higher=better or lower=better)
+- Set `tolerance: 0.0` for metrics where any regression is unacceptable (test counts, latency)
+- Set `significance: 0.01` for ratio metrics; use larger thresholds for integer counts
+- Avoid metrics the experimenter can trivially game (e.g., "comment count" — easy to add noise comments)

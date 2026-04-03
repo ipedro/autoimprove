@@ -50,6 +50,8 @@ echo '{"test_count": 42, "todo_count": 7}'
 
 autoimprove uses these numbers to decide whether to keep or discard each experiment. **If a metric gets worse, the experiment is thrown away.** If at least one improves and none regress, it's merged.
 
+> **Gates protect invariants. Benchmarks measure progress.** Gates are binary — if tests fail, the experiment is discarded. Benchmarks are numeric — if a metric regresses beyond tolerance, the experiment is discarded. Gates catch regressions; benchmarks track improvement.
+
 `/autoimprove init` generates a working benchmark script automatically. The default metrics — `test_count` and `todo_count` — work for any project with a test suite. You can add custom metrics later by editing `benchmark/metrics.sh` and updating the `benchmarks:` section of `autoimprove.yaml`.
 
 **No benchmark = no grind loop.** You need at least one metric for the loop to score experiments.
@@ -87,3 +89,23 @@ autoimprove also includes standalone tools that work without `autoimprove.yaml`:
 - **Challenge benchmarks** (`/autoimprove-test challenge`) — test debate agent accuracy against curated code puzzles with known answer keys. See [skills: challenge](skills.md#challenge).
 
 - **Prompt testing** (`/autoimprove-prompt-testing`) — methodology guide for writing tests for skills and agents. See [skills: prompt-testing](skills.md#prompt-testing).
+
+## Autoimprove-Compatible Development
+
+Every new feature you ship should have a corresponding metric in autoimprove.yaml.
+Without a metric, the grind loop cannot improve it.
+
+Checklist for each new feature:
+- [ ] Add a metric to autoimprove.yaml (or extend an existing benchmark script)
+- [ ] Run `bash scripts/evaluate.sh` to capture the new baseline
+- [ ] Verify the metric direction (higher_is_better vs lower_is_better)
+- [ ] Add the feature's files to a relevant theme's focus_paths
+
+## Adding Metrics Mid-Sprint
+
+When you add a new feature, add its metric immediately — not at the end of the sprint.
+
+1. Add the metric to `autoimprove.yaml` under the appropriate benchmark
+2. Update the benchmark script to compute and output the new field
+3. Run `bash scripts/evaluate.sh` to capture the baseline (this becomes the epoch baseline)
+4. The grind loop can now optimize the feature starting from the next experiment
