@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Shared helpers for autoimprove skill unit tests.
 # Pattern: ask natural language questions about skill content, assert on output.
-# Reference: superpowers/tests/claude-code/test-helpers.sh (macOS-compatible variant — no GNU timeout)
+# Cross-platform (macOS + Linux) — no GNU timeout dependency.
+# Reference: superpowers/tests/claude-code/test-helpers.sh
 
 TEST_MODEL="${TEST_MODEL:-haiku}"
 PLUGIN_DIR="${PLUGIN_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
