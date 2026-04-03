@@ -26,10 +26,13 @@ Measure target size first. Mode gates max rounds and prompt depth.
 
 | Condition | MODE | MAX_ROUNDS |
 |-----------|------|------------|
+| Target file has `.md` extension | `FULL` | 10 |
 | Single file OR diff ≤ 150 lines | `LIGHTWEIGHT` | 3 |
 | Multi-file OR diff > 150 lines | `FULL` | 10 |
 
-Log: `"[AR] Mode: {MODE} ({N} lines, max_rounds: {MAX_ROUNDS})"`
+**.md override:** If the target is a `.md` file, force `FULL` mode regardless of line count. Design specs generate ~14 findings/round vs ~3 for equivalent code — the line-count heuristic does not apply.
+
+Log: `"[AR] Mode: {MODE} ({N} lines, max_rounds: {MAX_ROUNDS})"`. If `.md` override applied, append `" [spec-mode: .md override]"` to the log line.
 
 ---
 
@@ -164,6 +167,10 @@ Find issues NOT in the blocklist only.</if>"
 5. Store as `ENTHUSIAST_OUTPUT`.
 
 **Pre-adversary dedup:**
+
+**Spec-target skip condition:** If `TARGET_TYPE == "spec"`, skip the pre-adversary dedup pass entirely: set `NOVEL_FINDINGS = ENTHUSIAST_OUTPUT.findings` and log `"[AR] Pre-dedup skipped: spec target (TARGET_TYPE=spec) — Judge handles repetition via blocklist."`. Proceed directly to 3B.
+
+Otherwise (code targets):
 - Extract `(file, line)` from each new finding.
 - Match against `CONFIRMED_LOCATIONS` where same file AND `|new_line - confirmed_line| <= 5`.
 - Split into `NOVEL_FINDINGS` (no match) and `DUPLICATE_FINDINGS` (matched).
