@@ -71,17 +71,36 @@ benchmarks:
     type: deterministic
     command: bash benchmark/self-metrics.sh
     metrics:
-      - name: skill_depth
-        extract: "json:.skill_depth"
-        direction: higher_is_better
-        tolerance: 0.0
-        significance: 0.01
+      # skill_depth and agent_sections are DISABLED — gameable (word/section count)
+      # Replaced by structural proxy metrics below (anti-Goodhart, Creative-1 plan)
 
-      - name: agent_sections
-        extract: "json:.agent_sections"
+      - name: example_density
+        extract: "json:.example_density"
         direction: higher_is_better
         tolerance: 0.0
         significance: 0.01
+        description: "Average code/example blocks per skill file — concrete > abstract"
+
+      - name: imperative_ratio
+        extract: "json:.imperative_ratio"
+        direction: higher_is_better
+        tolerance: 0.0
+        significance: 0.01
+        description: "Fraction of skill lines that are directives (use/run/never/do not) — directives > descriptions"
+
+      - name: trigger_precision
+        extract: "json:.trigger_precision"
+        direction: higher_is_better
+        tolerance: 0.0
+        significance: 0.01
+        description: "Average distinct trigger phrases per skill — specificity of invocation conditions"
+
+      - name: failure_mode_coverage
+        extract: "json:.failure_mode_coverage"
+        direction: higher_is_better
+        tolerance: 0.0
+        significance: 0.01
+        description: "Proportion of skills with explicit 'do not / never / forbidden' documentation"
 
   - name: reliability
     command: bash benchmark/self-metrics.sh

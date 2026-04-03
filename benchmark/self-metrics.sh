@@ -49,32 +49,72 @@ for agent_file in "$DIR/agents"/*.md; do
   fi
 done
 
-# skill_depth: average line count across all SKILL.md files
+# skill_depth: DEPRECATED — gameable (word count). Kept for backward compat.
 skill_depth=0
+
+# agent_sections: DEPRECATED — gameable (section count). Kept for backward compat.
+agent_sections=0
+
+# ── Structural proxy metrics (anti-Goodhart, Tier 1) ────────────────────────
+# These measure signal that correlates with quality but resists gaming:
+# - example_density: example blocks per skill (concrete > abstract)
+# - imperative_ratio: action verbs / total lines (directives > descriptions)
+# - trigger_precision: distinct trigger phrases per skill (specificity)
+# - failure_mode_coverage: proportion of skills with explicit "do not" docs
+
 skill_file_count=0
+example_density_total=0
+imperative_lines_total=0
+total_skill_lines=0
+trigger_phrase_total=0
+skills_with_failure_docs=0
+
 for skill_dir in "$DIR/skills"/*/; do
-  if [ -f "$skill_dir/SKILL.md" ]; then
-    lines=$(wc -l < "$skill_dir/SKILL.md")
-    skill_depth=$((skill_depth + lines))
-    skill_file_count=$((skill_file_count + 1))
+  skill_file="$skill_dir/SKILL.md"
+  [ -f "$skill_file" ] || continue
+  skill_file_count=$((skill_file_count + 1))
+
+  # example_density: count fenced code blocks + "## Example" headings
+  examples=$(grep -c '^\(```\|## Example\|### Example\)' "$skill_file" 2>/dev/null || true)
+  # Each fenced block has open+close, so divide by 2; add section headings back
+  code_blocks=$(grep -c '^```' "$skill_file" 2>/dev/null || true)
+  example_sections=$(grep -c '^## Example\|^### Example' "$skill_file" 2>/dev/null || true)
+  examples=$(( (code_blocks / 2) + example_sections ))
+  example_density_total=$((example_density_total + examples))
+
+  # imperative_ratio: lines starting with action verbs or modal imperatives
+  imp=$(grep -ciE '^(use|run|call|invoke|always|never|do not|avoid|set|add|pass|return|check|ensure|prefer|include|read|write|omit|skip|stop|dispatch|emit|load|store|create|delete|update|format|validate|parse|handle)' "$skill_file" 2>/dev/null || true)
+  skill_lines=$(wc -l < "$skill_file")
+  imperative_lines_total=$((imperative_lines_total + imp))
+  total_skill_lines=$((total_skill_lines + skill_lines))
+
+  # trigger_precision: distinct trigger keywords in frontmatter examples/description
+  # Count unique words in the description + examples frontmatter fields (proxy: first 20 lines)
+  trigger_phrases=$(head -20 "$skill_file" | grep -oiE '\b(when|trigger|use when|invoke when|called when)\b[^.]*' | wc -l | tr -d ' ' || true)
+  trigger_phrase_total=$((trigger_phrase_total + trigger_phrases))
+
+  # failure_mode_coverage: skill documents what NOT to do
+  if grep -qiE 'do not|do NOT|never|must not|avoid|forbidden|prohibited' "$skill_file" 2>/dev/null; then
+    skills_with_failure_docs=$((skills_with_failure_docs + 1))
   fi
 done
-if [ "$skill_file_count" -gt 0 ]; then
-  skill_depth=$((skill_depth / skill_file_count))
-fi
 
-# agent_sections: count of agents with all required sections (description, when-to-use, constraints)
-agent_sections=0
-for agent_file in "$DIR/agents"/*.md; do
-  [ -f "$agent_file" ] || continue
-  has_desc=0
-  has_when=0
-  has_constraints=0
-  grep -qi "^description:" "$agent_file" 2>/dev/null && has_desc=1 || true
-  grep -qi "when.to.use\|when to use\|## when" "$agent_file" 2>/dev/null && has_when=1 || true
-  grep -qi "constraint\|forbidden\|never\|must not" "$agent_file" 2>/dev/null && has_constraints=1 || true
-  [ "$has_desc" -eq 1 ] && [ "$has_when" -eq 1 ] && [ "$has_constraints" -eq 1 ] && agent_sections=$((agent_sections + 1)) || true
-done
+# Compute aggregates
+if [ "$skill_file_count" -gt 0 ]; then
+  example_density=$(awk "BEGIN {printf \"%.4f\", $example_density_total / $skill_file_count}")
+  if [ "$total_skill_lines" -gt 0 ]; then
+    imperative_ratio=$(awk "BEGIN {printf \"%.4f\", $imperative_lines_total / $total_skill_lines}")
+  else
+    imperative_ratio="0.0000"
+  fi
+  trigger_precision=$(awk "BEGIN {printf \"%.4f\", $trigger_phrase_total / $skill_file_count}")
+  failure_mode_coverage=$(awk "BEGIN {printf \"%.4f\", $skills_with_failure_docs / $skill_file_count}")
+else
+  example_density="0.0000"
+  imperative_ratio="0.0000"
+  trigger_precision="0.0000"
+  failure_mode_coverage="0.0000"
+fi
 
 # revert_rate: proportion of last 50 commits that are reverts (float 0.0-1.0)
 # Missing data (no git history): output 0.0
@@ -151,4 +191,4 @@ if [ -f "$TSV_PATH" ]; then
   fi
 fi
 
-echo "{\"test_count\": $test_count, \"broken_constraints\": $broken_constraints, \"broken_refs\": $broken_refs, \"skill_doc_coverage\": $skill_doc_coverage, \"agent_completeness\": $agent_completeness, \"skill_depth\": $skill_depth, \"agent_sections\": $agent_sections, \"revert_rate\": $revert_rate, \"bug_escape_rate\": $bug_escape_rate, \"ar_severity_trend\": $ar_severity_trend, \"fix_durability\": $fix_durability}"
+echo "{\"test_count\": $test_count, \"broken_constraints\": $broken_constraints, \"broken_refs\": $broken_refs, \"skill_doc_coverage\": $skill_doc_coverage, \"agent_completeness\": $agent_completeness, \"skill_depth\": $skill_depth, \"agent_sections\": $agent_sections, \"revert_rate\": $revert_rate, \"bug_escape_rate\": $bug_escape_rate, \"ar_severity_trend\": $ar_severity_trend, \"fix_durability\": $fix_durability, \"example_density\": $example_density, \"imperative_ratio\": $imperative_ratio, \"trigger_precision\": $trigger_precision, \"failure_mode_coverage\": $failure_mode_coverage}"
