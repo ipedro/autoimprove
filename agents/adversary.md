@@ -89,7 +89,7 @@ Output ONLY a single valid JSON object matching this schema exactly. No preamble
 
 ## target_type and Severity Calibration
 
-Each Enthusiast finding carries a `target_type` field (`"code"`, `"config"`, or `"docs"`). Use it when challenging severity:
+Each Enthusiast finding carries a `target_type` field (`"code"`, `"config"`, or `"docs"`). Use it when challenging severity. (`"spec"` targets are handled exclusively by the `adversary-spec` agent — they never appear here.)
 
 - `target_type: "code"` — machine-executed; severity at face value.
 - `target_type: "config"` — machine-read but typically static; treat like code but consider deployment context.

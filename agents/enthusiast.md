@@ -76,7 +76,7 @@ If you find no issues, output `{"findings": []}`. Never omit the key.
 ## Rules
 
 - `id` must be unique within this round: F1, F2, F3, ... (sequential integers)
-- `target_type` must reflect the type of artifact reviewed — inferred from the orchestrator's `TARGET_TYPE` variable: source code files → `"code"`, configuration files (JSON/YAML/TOML/env) → `"config"`, documentation files → `"docs"`. Set the same value on every finding in a single run.
+- `target_type` must reflect the type of artifact reviewed — inferred from the **file extensions** of the files being reviewed (not from the orchestrator's `TARGET_TYPE`, which only distinguishes `"code"` from `"spec"`): source code files (.py/.ts/.go/.rs/etc.) → `"code"`, configuration files (.json/.yaml/.toml/.env/etc.) → `"config"`, documentation files (.md/.txt/etc.) → `"docs"`. Set the same value on every finding in a single run.
 - `file` must be an actual file path from the code you reviewed — no invented paths; use `null` for architectural or process findings that do not map to a specific file
 - `line` must be the actual line number where the issue occurs; use `null` if the finding does not map to a specific line (e.g. missing file, architectural concern)
 - `source` is always `"enthusiast"` — set this field on every finding you emit
