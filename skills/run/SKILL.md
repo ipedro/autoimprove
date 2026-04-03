@@ -370,6 +370,92 @@ TodoWrite([
 
 ---
 
+## 2j. Dynamic Parallel Scaling
+
+Before spawning any experiment agents, determine how many grind loops may run in parallel.
+
+Read `budget.max_parallel` from `autoimprove.yaml` (default: 1 if absent). This is the **user-configured ceiling**.
+
+Then attempt dynamic scaling from the weekly token budget:
+
+```bash
+BUDGET_FILE="$HOME/.xgh/budget.yaml"
+SNAPSHOT_LOG="$HOME/.xgh/budget-snapshots.log"
+CONFIG_MAX_PARALLEL=<budget.max_parallel from autoimprove.yaml>   # e.g. 1
+
+if [ ! -f "$BUDGET_FILE" ]; then
+  # No budget data — use config value, no dynamic scaling
+  MAX_PARALLEL=$CONFIG_MAX_PARALLEL
+  echo "[grind] budget.yaml not found — using config max_parallel=$MAX_PARALLEL (no dynamic scaling)"
+else
+  # Read current snapshot
+  PCT_USED=$(grep 'pct_used:' "$BUDGET_FILE" | awk '{print $2}')
+  PCT_REMAINING=$(echo "100 - $PCT_USED" | bc)
+
+  # Compute burn rate if snapshot log exists and has >= 2 entries
+  BURN_RATE=""
+  if [ -f "$SNAPSHOT_LOG" ] && [ "$(wc -l < "$SNAPSHOT_LOG")" -ge 2 ]; then
+    # Log format: "<ISO_TIMESTAMP> <pct_used>" — one entry per line
+    FIRST_LINE=$(head -1 "$SNAPSHOT_LOG")
+    FIRST_TS=$(echo "$FIRST_LINE" | awk '{print $1}')
+    FIRST_PCT=$(echo "$FIRST_LINE" | awk '{print $2}')
+    NOW_TS=$(date -u +%s)
+    FIRST_EPOCH=$(date -u -d "$FIRST_TS" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$FIRST_TS" +%s 2>/dev/null)
+    HOURS_ELAPSED=$(echo "scale=2; ($NOW_TS - $FIRST_EPOCH) / 3600" | bc)
+    if [ "$(echo "$HOURS_ELAPSED > 0" | bc)" -eq 1 ]; then
+      # burn_rate = pct consumed since first snapshot / hours elapsed
+      PCT_CONSUMED=$(echo "scale=2; $PCT_USED - $FIRST_PCT" | bc)
+      BURN_RATE=$(echo "scale=2; $PCT_CONSUMED / $HOURS_ELAPSED" | bc)
+    fi
+  fi
+
+  # Apply scaling table
+  # | PCT_REMAINING | BURN_RATE     | PARALLEL |
+  # |---------------|---------------|----------|
+  # | >60           | any           | 5        |
+  # | 40-60         | low (<2/h)    | 3        |
+  # | 40-60         | high (>=2/h)  | 2        |
+  # | 20-40         | any           | 1        |
+  # | <20           | any           | 0 (halt) |
+  if [ "$(echo "$PCT_REMAINING > 60" | bc)" -eq 1 ]; then
+    DYNAMIC_MAX=5
+  elif [ "$(echo "$PCT_REMAINING >= 40" | bc)" -eq 1 ]; then
+    if [ -n "$BURN_RATE" ] && [ "$(echo "$BURN_RATE >= 2" | bc)" -eq 1 ]; then
+      DYNAMIC_MAX=2
+    else
+      DYNAMIC_MAX=3
+    fi
+  elif [ "$(echo "$PCT_REMAINING >= 20" | bc)" -eq 1 ]; then
+    DYNAMIC_MAX=1
+  else
+    DYNAMIC_MAX=0
+  fi
+
+  # Take the minimum of dynamic ceiling and user config
+  if [ "$DYNAMIC_MAX" -lt "$CONFIG_MAX_PARALLEL" ]; then
+    MAX_PARALLEL=$DYNAMIC_MAX
+  else
+    MAX_PARALLEL=$CONFIG_MAX_PARALLEL
+  fi
+
+  BURN_DISPLAY=${BURN_RATE:-"unknown"}
+  echo "[grind] budget ${PCT_REMAINING}% remaining, burn ${BURN_DISPLAY}/h → max ${MAX_PARALLEL} parallel"
+
+  if [ "$MAX_PARALLEL" -eq 0 ]; then
+    echo "[grind] HALT: weekly budget < 20% remaining. Hotfix mode only — stopping grind loop."
+    # Skip to Session End
+  fi
+fi
+```
+
+If `MAX_PARALLEL` is 0, stop the grind loop immediately and skip to Session End (step 4). Log the halt reason in `experiments/state.json` under `"last_halt_reason": "budget_exhausted"`.
+
+The `MAX_PARALLEL` value is the upper bound on concurrent experimenter agents for this session. Pass it to the experiment loop (section 3) so the loop respects it when spawning agents.
+
+> **Hard ceiling:** `MAX_PARALLEL` must never exceed 5 (§3 of UNBREAKABLE_RULES — max 5 concurrent subagents per agent). The scaling table already respects this; if `budget.max_parallel` is set higher than 5, clamp it to 5.
+
+---
+
 # 3. Experiment Loop
 
 Read `references/loop.md` and `references/tasktree.md`, then execute the full experiment loop (sections 3a–3o) and session end (section 4). Session state lives in TaskTree + experiments.tsv. The orchestrator manages task lifecycle and delegates individual experiments to Agent subagents. See `references/tasktree.md` for the TaskTree protocol.
