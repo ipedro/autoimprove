@@ -2,7 +2,7 @@
 name: adversarial-review
 description: "Run an adversarial Enthusiast→Adversary→Judge debate review on code. Automatically converges — no manual round control needed. Use when the user says 'adversarial review', 'debate review', 'run a review round', 'do a review round', 'review code with debate agents', 'i want an adversarial review', or '/autoimprove review'. Do NOT trigger on generic 'review' requests or PR reviews. Takes a file, diff, or PR as target."
 argument-hint: "[file|diff] [--map-mode none|map|hybrid]"
-allowed-tools: [Read, Glob, Grep, Bash, Agent, TodoWrite, TodoRead]
+allowed-tools: [Read, Glob, Grep, Bash, Agent, TaskCreate, TaskUpdate]
 ---
 
 <!-- EXPERIMENTAL FLAG -->
@@ -209,14 +209,12 @@ Do not replace `TARGET_CODE`; this brief is additive and exists only to orient a
 **Create progress tasks (MANDATORY — do this before dispatching any agent):**
 
 ```
-TodoWrite([
-  {id: "enthusiast", content: "🔍 Enthusiast: find strengths and risks", status: "pending"},
-  {id: "adversary",  content: "⚔️ Adversary: challenge all findings",   status: "pending"},
-  {id: "judge",      content: "⚖️ Judge: deliver final verdict",         status: "pending"}
-])
+TASK_E_ID = TaskCreate({content: "🔍 Enthusiast: find strengths and risks", status: "pending"}).id
+TASK_A_ID = TaskCreate({content: "⚔️ Adversary: challenge all findings",   status: "pending", blocked_by: [TASK_E_ID]}).id
+TASK_J_ID = TaskCreate({content: "⚖️ Judge: deliver final verdict",         status: "pending", blocked_by: [TASK_A_ID]}).id
 ```
 
-Mark each task `in_progress` immediately before running its agent, and `completed` immediately after. This ensures the E→A→J chain is always visible in the todo list throughout the review.
+Store `TASK_E_ID`, `TASK_A_ID`, `TASK_J_ID` in state. Mark each `in_progress` immediately before running its agent, `completed` immediately after. The `blocked_by` links make the E→A→J dependency visible in the task tree.
 
 ---
 
@@ -232,7 +230,7 @@ Repeat STEP 3A → 3B → 3C → 3D until `converged = true` or `ROUND > MAX_ROU
 
 **Compliance pre-check:** If `ROUND > MAX_ROUNDS`, exit loop immediately.
 
-Mark todo: `{id: "enthusiast", status: "in_progress"}`.
+Mark task: `TaskUpdate(TASK_E_ID, {status: "in_progress"})`.
 
 **Build CONFIRMED_LOCATIONS list** (round > 1 only):
 Extract `(file, line)` from all prior rulings where `winner` = `"enthusiast"` or `"split"`. Format: `"src/foo.ts:42, src/bar.ts:17"`.
@@ -334,7 +332,7 @@ Otherwise (code targets):
 - Split into `NOVEL_FINDINGS` (no match) and `DUPLICATE_FINDINGS` (matched).
 - If duplicates exist: log `"Auto-dismissed {N} duplicate(s): {locations}"`.
 - Replace `ENTHUSIAST_OUTPUT.findings` with `NOVEL_FINDINGS`.
-Mark todo complete: `{id: "enthusiast", content: "🔍 AR Round {ROUND}: Enthusiast ({NOVEL_FINDINGS.length} findings)", status: "completed"}`.
+Mark task: `TaskUpdate(TASK_E_ID, {content: "🔍 AR Round {ROUND}: Enthusiast ({NOVEL_FINDINGS.length} findings)", status: "completed"})`.
 
 - If `NOVEL_FINDINGS` is empty: skip 3B and 3C, go to 3D (convergence path).
 
@@ -344,7 +342,7 @@ Mark todo complete: `{id: "enthusiast", content: "🔍 AR Round {ROUND}: Enthusi
 
 **Compliance pre-check:** `ENTHUSIAST_OUTPUT` must exist and `NOVEL_FINDINGS.length > 0`. If not, skip to 3D.
 
-Mark todo: `{id: "adversary", content: "⚔️ AR Round {ROUND}: Adversary — challenging {NOVEL_FINDINGS.length} findings", status: "in_progress"}`.
+Mark task: `TaskUpdate(TASK_A_ID, {content: "⚔️ AR Round {ROUND}: Adversary — challenging {NOVEL_FINDINGS.length} findings", status: "in_progress"})`.
 
 **Map mode payload for Adversary:** Use the same `CONTEXT_PAYLOAD` / `CONTEXT_TAG` / `CONTEXT_NOTE` computed in 3A above (do NOT recompute — reuse values set during 3A). For `MAP_MODE == "none"`, this is `TARGET_CODE`.
 
@@ -369,7 +367,7 @@ Healthy challenge rate: 15–25%. Validating 100% without pushback = insufficien
 
 **Compliance check:** `ADVERSARY_OUTPUT.verdicts` must contain one entry per finding in `NOVEL_FINDINGS`. If count mismatches: log `"adversary_verdict_count_mismatch: expected {N}, got {M}"` — proceed anyway.
 
-Mark todo: `{id: "adversary", content: "⚔️ AR Round {ROUND}: Adversary ({challenged_count} challenged)", status: "completed"}` where `challenged_count` = verdicts where verdict != "valid".
+Mark task: `TaskUpdate(TASK_A_ID, {content: "⚔️ AR Round {ROUND}: Adversary ({challenged_count} challenged)", status: "completed"})` where `challenged_count` = verdicts where verdict != "valid".
 
 ---
 
@@ -377,7 +375,7 @@ Mark todo: `{id: "adversary", content: "⚔️ AR Round {ROUND}: Adversary ({cha
 
 **Compliance pre-check:** Both `ENTHUSIAST_OUTPUT` and `ADVERSARY_OUTPUT` must exist. If not, log `judge_skipped_missing_inputs` and go to 3D.
 
-Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — ruling on debate", status: "in_progress"}`.
+Mark task: `TaskUpdate(TASK_J_ID, {content: "⚖️ AR Round {ROUND}: Judge — ruling on debate", status: "in_progress"})`.
 
 **Map mode payload for Judge:** Use the same `CONTEXT_PAYLOAD` / `CONTEXT_TAG` / `CONTEXT_NOTE` computed in 3A above (reuse, do not recompute). For `MAP_MODE == "none"`, this is `TARGET_CODE`.
 
@@ -407,7 +405,7 @@ Set convergence:true only if ALL (file,line,winner,final_severity) tuples match 
 
 **Count results:** `confirmed_count` = rulings where winner ∈ {enthusiast, split}; `debunked_count` = rulings where winner = adversary.
 
-Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge ({confirmed_count} confirmed, {debunked_count} debunked)", status: "completed"}`.
+Mark task: `TaskUpdate(TASK_J_ID, {content: "⚖️ AR Round {ROUND}: Judge ({confirmed_count} confirmed, {debunked_count} debunked)", status: "completed"})`.
 
 **Update state:**
 - Append confirmed `(file, line)` tuples to `CONFIRMED_LOCATIONS`.
@@ -561,11 +559,9 @@ Print last: `📁 Run saved: ~/.autoimprove/runs/<RUN_ID>/`
 Before leaving the execution flow, close all todos explicitly:
 
 ```javascript
-TodoWrite([
-  {id: "enthusiast", content: "✅ AR complete", status: "completed"},
-  {id: "adversary",  content: "✅ AR complete", status: "completed"},
-  {id: "judge",      content: "✅ AR complete", status: "completed"}
-])
+TaskUpdate(TASK_E_ID, {content: "✅ AR complete", status: "completed"})
+TaskUpdate(TASK_A_ID, {content: "✅ AR complete", status: "completed"})
+TaskUpdate(TASK_J_ID, {content: "✅ AR complete", status: "completed"})
 ```
 
 ---
