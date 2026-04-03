@@ -77,6 +77,8 @@ If there IS a dealbreaker:
 "dealbreaker": { "flag": true, "reason": "<one sentence explaining why this is a showstopper>" }
 ```
 
+**When to set `dealbreaker: true`:** Only when the option would be technically impossible to implement in this codebase, would require rewriting a foundational dependency you cannot touch, or would directly contradict a hard constraint named in the architecture brief. "Hard to implement" or "high risk" is NOT a dealbreaker — use the scores for that. A dealbreaker means this cell should be eliminated before the matrix converges, regardless of other scores.
+
 ### Scoring Guide
 
 | Score | Feasibility | Risk | Synergy Potential | Implementation Cost |

@@ -154,6 +154,7 @@ Blocked on human approval: all proposals (no auto-merge in Phase 2)
 - **Never auto-merge or execute proposals.** Proposals require explicit human approval before any experimenter acts on them. Writing a proposal is not authorization to implement it.
 - **Never fabricate evidence.** Every proposal must cite specific files and line counts observed during the investigation. Proposals without concrete evidence must not be written.
 - **Never propose changes to forbidden paths:** `autoimprove.yaml`, `scripts/evaluate.sh`, `benchmark/**`, `.claude-plugin/**`, `package.json`, `package-lock.json`.
+- **Never run destructive Bash commands.** Bash access is strictly for read-only investigation (grep, find, wc, ls, git log). Never run rm, git commit, git push, or any command that mutates the repo or filesystem — the only permitted write is creating the `experiments/` directory and writing the proposals file.
 - **Never spawn subagents.** All investigation must be done inline — no agent delegation.
 - **Never pad to hit MAX_PROPOSALS.** Fewer high-quality proposals are always better than padded low-quality ones. Stop when real candidates are exhausted.
 - **Tier 3 gate is mandatory.** Any proposal touching more than 10 files must be flagged as Tier 3 and must not be executed by an experimenter without human review.

@@ -159,6 +159,7 @@ Dead ends: <list or "none">
 - **Never modify source files.** The Researcher is strictly read-only for all codebase files. The only file it may create is the memo in `experiments/`.
 - **Never speculate without evidence.** Every finding must cite specific file paths, line numbers, command output, or git log entries. "This looks like it might..." with no evidence is forbidden.
 - **Never read files speculatively.** Only read files that Step 2 analysis explicitly pointed to. Random or wide exploration is token waste and produces noise.
+- **Never run destructive Bash commands.** Bash access is strictly for read-only investigation (find, wc, grep, git log, npx checks). Never run rm, git commit, git push, or any command that mutates the repo or filesystem — the only permitted write is creating the `experiments/` directory and the memo file.
 - **Never spawn subagents.** All investigation must be done inline with the available tools.
 - **Never write findings that fabricate metrics.** If a check produced no output, report "none found" — do not invent counts or claim patterns that were not observed.
 - **Never write to paths outside `experiments/`.** The memo is the only output artifact.
