@@ -565,7 +565,86 @@ TodoWrite([
 
 ---
 
-# 8. Notes
+# 8. Write Telemetry
+
+Non-fatal — skip silently if any write fails. Telemetry MUST NOT block the matrix output or raise errors to the user.
+
+**Generate RUN_ID:** `YYYYMMDD-HHMMSS-<problem-slug>` where the problem slug is the `PROBLEM` string lowercased, non-alphanumeric characters replaced with `-`, truncated to 40 characters, and trailing `-` stripped.
+
+```bash
+mkdir -p ~/.autoimprove/matrix-runs/<RUN_ID>
+```
+
+Store: `MATRIX_RUN_DIR=~/.autoimprove/matrix-runs/<RUN_ID>`.
+
+**Write `$MATRIX_RUN_DIR/meta.json`:**
+```json
+{
+  "run_id": "<RUN_ID>",
+  "problem": "<PROBLEM>",
+  "options": [<OPTIONS array>],
+  "date": "<ISO 8601 datetime>",
+  "model": "haiku",
+  "brief_mode": <true|false>,
+  "cell_count": 9,
+  "error_count": <errors field from structured JSON>
+}
+```
+
+**Write `$MATRIX_RUN_DIR/cells.json`:**
+Full `RESULTS` array — all 9 cell outputs as collected in step 5 (including any `error` fields for malformed/sparse cells).
+
+**Write `$MATRIX_RUN_DIR/convergence.json`:**
+The `convergence` object from the structured JSON output (step 6e), plus `devil_advocate` and `confidence_margin`:
+```json
+{
+  "winner": "<cell label>",
+  "winner_cell": <N>,
+  "winner_composite": <score>,
+  "verdict_type": "<go|conditional|no_clear_winner|narrow_win>",
+  "confidence_margin": <value>,
+  "devil_advocate": { <devil_advocate object or null> },
+  "conditions": [...],
+  "reasoning": "...",
+  "top_insights": [...],
+  "risks": [...],
+  "required_mitigations": [...],
+  "recommended_improvements": [...]
+}
+```
+
+**Write `$MATRIX_RUN_DIR/report.md`:**
+```markdown
+# Idea Matrix Run — <RUN_ID>
+
+**Problem:** <PROBLEM>
+**Date:** <ISO date>
+**Winner:** <winner label> (score: <winner_composite>/5)
+**Verdict type:** <verdict_type>
+**Confidence margin:** <confidence_margin>
+
+## Score Table
+
+| Cell | Label | Feas. | Risk | Synergy | Cost | Avg | Dealbreaker |
+|------|-------|-------|------|---------|------|-----|-------------|
+<one row per cell from RESULTS>
+
+## Devil's Advocate
+
+<devil_advocate.challenge or "Not run (narrow win or no clear winner)">
+
+## Top Insights
+
+<numbered list of top_insights>
+```
+
+After all writes complete (or are skipped on error), print:
+
+`Run saved: ~/.autoimprove/matrix-runs/<RUN_ID>/`
+
+---
+
+# 9. Notes
 
 - **9 agents is the fixed grid.** The 3x3 structure (3 solo + 3 pairs + 1 trio + 2 wild) is the core design.
 - **Haiku only, no tools.** Agents reason about pre-digested context. The orchestrator does the codebase research.
