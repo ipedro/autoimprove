@@ -37,6 +37,7 @@ Initialize progress tracking at the start of the session:
 ```
 TodoWrite([
   {id: "prereqs",   content: "✅ Prerequisites check",          status: "pending"},
+  {id: "autotune",  content: "🔧 Environment health (autotune)", status: "pending"},
   {id: "config",    content: "📋 Read config + build eval JSON", status: "pending"},
   {id: "baseline",  content: "📊 Capture baseline metrics",      status: "pending"},
   {id: "state",     content: "🔄 Load state + session TaskTree", status: "pending"},
@@ -68,6 +69,20 @@ If any check fails, stop immediately and tell the user what's missing.
 
 ```
 TodoWrite([{id: "prereqs", content: "✅ Prerequisites check", status: "completed"}])
+```
+
+---
+
+# 1b. Environment Health Check (autotune)
+
+Read `preflight.autotune` from `autoimprove.yaml`. If `true` (default), invoke the `autotune:autotune` skill now.
+
+autotune checks: dead MCP servers, model config, plugin health, permission friction, CLAUDE.md bloat. It prints a score and warnings — it does NOT block the grind. If autotune reports critical issues (score < 50), warn the user and ask whether to continue. If score ≥ 50, proceed automatically.
+
+If `preflight.autotune: false`, skip this step silently.
+
+```
+TodoWrite([{id: "autotune", content: "🔧 Environment health (autotune)", status: "completed"}])
 ```
 
 ---
