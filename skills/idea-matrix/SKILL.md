@@ -271,7 +271,7 @@ After collecting all 9 results and before beginning synthesis, run two escalatio
 
 **Path A — Hard escalation (anomaly-based):**
 
-Count cells where `status == "malformed_json"` OR `status == "sparse_output"` (i.e., cells that returned an error record rather than valid scores).
+Count cells where `error == "malformed_json"` OR `error == "sparse_output"` (i.e., cells that returned an error record rather than valid scores).
 
 ```
 ANOMALOUS_CELLS = count of RESULTS entries where error == "malformed_json" OR error == "sparse_output"
