@@ -68,7 +68,7 @@ ADVERSARY_JSON=$(cat "$ADVERSARY_PATH")
 JUDGE_JSON=$(cat "$JUDGE_PATH")
 
 # Build the round record; omit "errors" key when array is empty
-jq -n \
+ROUND_JSON=$(jq -n \
   --argjson round "$ROUND" \
   --arg run_id "$RUN_ID" \
   --arg model "$MODEL" \
@@ -82,7 +82,8 @@ jq -n \
    enthusiast: $enthusiast, adversary: $adversary, judge: $judge,
    converged: $converged}
   + (if ($errors | length) > 0 then {errors: $errors} else {} end)
-  ' > "$ROUND_FILE"
+  ') || { echo "ar-write-round: failed to build round-${ROUND}.json (malformed agent JSON)" >&2; exit 1; }
+echo "$ROUND_JSON" > "$ROUND_FILE"
 
 # ── Update meta.json incrementally ────────────────────────────────────────────
 
