@@ -105,11 +105,11 @@ ar_severity_trend=0
 AR_RUNS_DIR="${HOME}/.autoimprove/runs"
 if [ -d "$AR_RUNS_DIR" ]; then
   # Get last 3 run directories sorted by name (timestamp-prefixed = chronological)
-  last3_dirs=$(ls -1 "$AR_RUNS_DIR" 2>/dev/null | sort | tail -3)
+  last3_dirs=$(ls -1 "$AR_RUNS_DIR" 2>/dev/null | grep -E '^[0-9]{8}-' | sort | tail -3)
   for run_name in $last3_dirs; do
     run_file="$AR_RUNS_DIR/$run_name/run.json"
     if [ -f "$run_file" ]; then
-      high_count=$(grep -c '"severity":"high"' "$run_file" 2>/dev/null || true)
+      high_count=$(jq '[.. | objects | select(.severity == "high")] | length' "$run_file" 2>/dev/null || grep -c '"severity":[[:space:]]*"high"' "$run_file" 2>/dev/null || true)
       ar_severity_trend=$((ar_severity_trend + high_count))
     fi
   done
@@ -122,7 +122,10 @@ fix_durability="1.0"
 TSV_PATH="$DIR/experiments/experiments.tsv"
 if [ -f "$TSV_PATH" ]; then
   # Extract verdict column (col 4) skipping header; store as array
-  mapfile -t verdicts < <(awk -F'\t' 'NR>1 && NF>=4 {print $4}' "$TSV_PATH" 2>/dev/null || true)
+  verdicts=()
+  while IFS= read -r line; do
+    verdicts+=("$line")
+  done < <(awk -F'\t' 'NR>1 && NF>=4 {print $4}' "$TSV_PATH" 2>/dev/null || true)
   total_verdicts=${#verdicts[@]}
   if [ "$total_verdicts" -ge 5 ]; then
     keep_total=0
