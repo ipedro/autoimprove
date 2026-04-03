@@ -171,6 +171,11 @@ MAP_TOKENS = 0             # estimated token count of MAP_SUMMARY
 FULLCODE_TOKENS = 0        # estimated token count of TARGET_CODE
 TOKEN_RATIO = 0.0          # MAP_TOKENS / FULLCODE_TOKENS
 INJECTED_SECTIONS = []     # accumulated REQUEST_SECTION snippets for hybrid mode (cleared each round)
+# Task tree IDs (set in Step 2b and refreshed each round in FULL mode)
+TASK_E_ID = null           # current round Enthusiast task
+TASK_A_ID = null           # current round Adversary task
+TASK_J_ID = null           # current round Judge task
+TASK_PREV_J_ID = null      # previous round Judge task — used as blocked_by anchor for next round
 ```
 
 ## Target Type Detection
@@ -229,6 +234,15 @@ Repeat STEP 3A → 3B → 3C → 3D until `converged = true` or `ROUND > MAX_ROU
 ## STEP 3A — ENTHUSIAST (MANDATORY)
 
 **Compliance pre-check:** If `ROUND > MAX_ROUNDS`, exit loop immediately.
+
+**Per-round task tree (FULL mode, Round 2+ only):**
+```
+if MODE == "FULL" AND ROUND > 1:
+  TASK_E_ID = TaskCreate({content: "🔍 Round {ROUND}: Enthusiast", status: "pending", blocked_by: [TASK_PREV_J_ID]}).id
+  TASK_A_ID = TaskCreate({content: "⚔️ Round {ROUND}: Adversary",  status: "pending", blocked_by: [TASK_E_ID]}).id
+  TASK_J_ID = TaskCreate({content: "⚖️ Round {ROUND}: Judge",       status: "pending", blocked_by: [TASK_A_ID]}).id
+```
+For LIGHTWEIGHT or Round 1: use existing `TASK_E_ID / TASK_A_ID / TASK_J_ID` created in Step 2b.
 
 Mark task: `TaskUpdate(TASK_E_ID, {status: "in_progress"})`.
 
@@ -406,6 +420,8 @@ Set convergence:true only if ALL (file,line,winner,final_severity) tuples match 
 **Count results:** `confirmed_count` = rulings where winner ∈ {enthusiast, split}; `debunked_count` = rulings where winner = adversary.
 
 Mark task: `TaskUpdate(TASK_J_ID, {content: "⚖️ AR Round {ROUND}: Judge ({confirmed_count} confirmed, {debunked_count} debunked)", status: "completed"})`.
+
+**Anchor next round:** `TASK_PREV_J_ID = TASK_J_ID`  ← used as `blocked_by` when Round N+1 creates its tasks.
 
 **Update state:**
 - Append confirmed `(file, line)` tuples to `CONFIRMED_LOCATIONS`.
