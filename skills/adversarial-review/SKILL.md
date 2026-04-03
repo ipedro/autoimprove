@@ -44,6 +44,8 @@ After resolving the target, store `TARGET_PATH` when there is a concrete file pa
 
 Store as `TARGET_CODE`. If empty: stop — nothing to review.
 
+**After storing `TARGET_CODE`:** Extract the ordered list of file paths from the `=== {filepath} ===` headers and store as `ALL_TARGET_FILES`. For single-file and diff targets this list will have 0 or 1 entries; the file budget only activates when `ALL_TARGET_FILES.length > 1`.
+
 ---
 
 # STEP 2 — INITIALIZE RUN
@@ -77,6 +79,8 @@ AGENT_JUDGE = "autoimprove:judge"
 ROUND_MODEL = "haiku"
 MODEL_LADDER = ["haiku", "sonnet", "opus"]
 converged = false
+FILE_FINDING_COUNTS = {}   # {filepath → confirmed finding count} across all rounds; populated after each Judge ruling
+ALL_TARGET_FILES = []      # ordered list of all file paths present in TARGET_CODE (populated in STEP 1)
 ```
 
 ## Target Type Detection
@@ -140,6 +144,29 @@ Mark todo: `{id: "enthusiast", status: "in_progress"}`.
 **Build CONFIRMED_LOCATIONS list** (round > 1 only):
 Extract `(file, line)` from all prior rulings where `winner` = `"enthusiast"` or `"split"`. Format: `"src/foo.ts:42, src/bar.ts:17"`.
 
+**Build RELEVANT_FILES + ACTIVE_CODE (round > 1, multi-file only):**
+
+This applies ONLY when `ROUND > 1` AND `ALL_TARGET_FILES.length > 1`. For R1, single-file, and diff reviews: skip this block entirely, use `TARGET_CODE` as-is.
+
+```
+RELEVANT_FILES = files where FILE_FINDING_COUNTS[file] > 0   # at least 1 confirmed finding
+              + files where FILE_FINDING_COUNTS[file] == 0 AND file never appeared in any prior round's findings
+                           (i.e. not yet seen by the Enthusiast)
+
+# Fallback: if RELEVANT_FILES is empty (all files reviewed, none had findings), include all files
+if RELEVANT_FILES is empty:
+  RELEVANT_FILES = ALL_TARGET_FILES
+
+Log: "[AR] R{ROUND} file budget: {RELEVANT_FILES.length}/{ALL_TARGET_FILES.length} files"
+
+# Build ACTIVE_CODE from TARGET_CODE by extracting only sections for RELEVANT_FILES
+# Each section in TARGET_CODE is delimited by "=== {filepath} ===" headers
+# Output format: preserve the same "=== {filepath} ===" delimiter for each included file
+ACTIVE_CODE = join of TARGET_CODE sections for each file in RELEVANT_FILES (in original order)
+```
+
+Use `ACTIVE_CODE` in the Enthusiast prompt below instead of `TARGET_CODE` when file budget is active. For R1, single-file, and diff: `ACTIVE_CODE = TARGET_CODE`.
+
 **Dispatch — use EXACTLY this Agent call:**
 ```
 Agent(
@@ -147,7 +174,7 @@ Agent(
   model: ROUND_MODEL,
   prompt: "[AR Round {ROUND} — {MODE}] Review the code below. Output ONLY valid JSON per your schema.
 <brief>{CONTEXT_BRIEF}</brief>
-<code>{TARGET_CODE}</code>
+<code>{ACTIVE_CODE}</code>
 {IF round>1: "BLOCKLIST (do not re-raise): {CONFIRMED_LOCATIONS}\nPrior summary: {PRIOR_JUDGE_SUMMARY}\nFind issues NOT in the blocklist only."}"
 )
 ```
@@ -237,6 +264,7 @@ Mark todo: `{id: "judge", content: "⚖️ AR Round {ROUND}: Judge — {confirme
 - Append confirmed `(file, line)` tuples to `CONFIRMED_LOCATIONS`.
 - Store `PRIOR_JUDGE_OUTPUT = JUDGE_OUTPUT`.
 - Store `PRIOR_JUDGE_SUMMARY = JUDGE_OUTPUT.summary`.
+- **Update FILE_FINDING_COUNTS:** For every ruling in `JUDGE_OUTPUT.rulings`, increment `FILE_FINDING_COUNTS[ruling.file]` by 1 for rulings where `winner` ∈ {enthusiast, split}. For rulings where `file` is null or not a recognized path (e.g. diff-mode findings), skip. This ensures the next round's RELEVANT_FILES set reflects which files produced confirmed findings.
 
 **Model escalation (FULL mode only):**
 - Path A (anomaly): if any `*_malformed_json` logged this round → `ROUND_MODEL = "sonnet"`.
