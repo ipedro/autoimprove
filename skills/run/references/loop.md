@@ -398,6 +398,30 @@ theme_cooldowns[theme] = themes.auto.cooldown_per_theme
 
 Write `experiments/state.json` one final time.
 
+## 4b-ii. Worktree Sweep (safety net — invariant 5)
+
+Per-experiment cleanup in step 3j removes worktrees along every verdict path, but
+a crash or an unhandled code path can still leave orphans behind. Run the shared
+cleanup helper unconditionally so invariant 5 is enforced in practice, not just
+on paper. The script is idempotent and protects in-flight work via three guards
+(live-worktree, `exp-*` tag, in-flight experiment id from `context.json`).
+
+```bash
+CLEANUP_OUTPUT=$(bash scripts/cleanup-worktrees.sh 2>&1 || true)
+echo "$CLEANUP_OUTPUT"
+```
+
+Capture the trailing `[cleanup] N worktrees, M branches removed` line. If `N > 0`
+or `M > 0`, surface it in the session summary (step 4c) under a `Cleanup:` line so
+drift is visible. Never let a cleanup failure block session end — the script is
+best-effort, and phase 2 of the next session will retry anyway.
+
+Branch patterns covered: `autoimprove/*` (experimenter branches) and
+`worktree-agent-*` (branches created by Claude Code's
+`Agent(isolation:"worktree")` mode — a separate namespace that step 3j does not
+track). Both must be swept here; hardcoding only one namespace was the
+observed drift cause that motivated this step.
+
 ## 4c. Print Summary
 
 ```
@@ -416,6 +440,7 @@ Write `experiments/state.json` one final time.
 
   Stagnated themes:    <list or "none">
   Epoch drift:         <max drift %> (threshold: <threshold>%)
+  Cleanup:             <N worktrees, M branches removed | "clean">
 
   Exit reason:         <budget_exhausted | all_stagnated | epoch_drift_halt>
 ═══════════════════════════════════════════════════

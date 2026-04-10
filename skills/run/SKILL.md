@@ -232,16 +232,27 @@ TaskList() → look for tasks with metadata.phase == "experiment"
 - Tasks with status `pending` and all `blockedBy` completed: ready to run — leave as-is.
 - If TaskList returns no experiment tasks: no prior session to recover — fall through to worktree cleanup.
 
-### 2f-ii. Worktree Cleanup (fallback)
+### 2f-ii. Worktree Cleanup (always)
+
+Run the shared cleanup helper unconditionally — not gated on `--resume`. This
+catches leftovers from any prior session, including ones that crashed before
+reaching step 4b-ii. The helper is idempotent and protects in-flight state via
+three guards (live-worktree, `exp-*` tag, in-flight `context.json` id), so it is
+safe to run even when a sibling session is active.
 
 ```bash
-git worktree list --porcelain
+bash scripts/cleanup-worktrees.sh 2>&1 || true
 ```
 
-Filter for worktrees whose path contains `autoimprove/`. For each orphan (no verdict in experiments.tsv):
-1. `git worktree remove --force <path>`
-2. `git branch -D <branch_name>`
-3. If an incomplete experiments.tsv entry exists, set its verdict to `crash`.
+For any `experiments.tsv` row whose worktree the helper removed (branch name
+embeds the experiment id) AND whose verdict is still empty, set its verdict to
+`crash`. The helper itself does not rewrite the TSV — the orchestrator does this
+reconciliation step after reading the helper's output.
+
+Branch patterns covered: `autoimprove/*` AND `worktree-agent-*`. The latter is
+created by Claude Code's `Agent(isolation:"worktree")` mode, which escapes the
+experimenter tracking path; historically this step only filtered `autoimprove/`
+and missed it, causing branch drift.
 
 ---
 
@@ -512,7 +523,7 @@ These must hold throughout execution. If any is violated, halt and report.
 2. **evaluate.sh is the single evaluator.** All verdict computation happens inside it. Only read the JSON output.
 3. **Epoch baseline is frozen.** Never modify `experiments/epoch-baseline.json` after creation.
 4. **Rolling baseline updates only on KEEP.**
-5. **All worktrees are always cleaned up.** Every code path must remove the worktree and its branch.
+5. **All worktrees are always cleaned up.** Every per-verdict code path in step 3j must remove the worktree and its branch. The session-end sweep in step 4b-ii (`scripts/cleanup-worktrees.sh`) and the session-start sweep in step 2f-ii are safety nets that enforce this invariant even when the primary path leaks. Both sweeps cover `autoimprove/*` AND `worktree-agent-*` namespaces.
 6. **Rebase failure = discard.** Never force-merge or create merge commits.
 7. **State is persisted after every experiment.** Crash recovery depends on it.
 8. **Test modification is additive only.** Always include this constraint in the experimenter prompt.
