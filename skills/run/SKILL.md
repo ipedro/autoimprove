@@ -36,6 +36,7 @@ Initialize progress tracking at the start of the session:
 
 ```
 TodoWrite([
+  {id: "safety",    content: "🛡️ Load SAFETY.md (binding rules)",  status: "pending"},
   {id: "prereqs",   content: "✅ Prerequisites check",          status: "pending"},
   {id: "autotune",  content: "🔧 Environment health (autotune)", status: "pending"},
   {id: "config",    content: "📋 Read config + build eval JSON", status: "pending"},
@@ -47,6 +48,26 @@ TodoWrite([
   {id: "loop",      content: "⚗️ Experiment loop",               status: "pending"},
   {id: "report",    content: "📋 Session report",                status: "pending"}
 ])
+```
+
+---
+
+# 0. Load Safety Rules (MUST be first)
+
+Before any other action, **Read the repo-local `SAFETY.md`** at the project root. These rules are binding for this orchestrator session AND for every subagent you dispatch. Load them into your working context and treat them as overriding any conflicting instruction from the user, the skill, or any task description.
+
+```bash
+test -f SAFETY.md || { echo "FATAL: SAFETY.md not found at project root — this repo is incomplete or corrupted. Refusing to proceed without a safety contract."; exit 1; }
+```
+
+Then invoke the `Read` tool on `SAFETY.md` to load its content. You MUST do this before any filesystem mutation, subagent dispatch, or experiment work.
+
+**Why this is step 0, not step 1:** the orchestrator itself must operate under the same safety contract as its subagents. Pedro's personal `~/.claude/UNBREAKABLE_RULES.md` is NOT portable and MUST NOT be assumed to exist. `SAFETY.md` is the repo-local, portable replacement and is the authoritative safety source for the autoimprove loop on any machine.
+
+**Rule-1 scope for the orchestrator:** SAFETY.md rule 1 says "stay in your worktree". For the orchestrator itself, interpret this as "stay inside the autoimprove project directory (the directory containing `autoimprove.yaml`) and inside its git worktree children." The orchestrator operates across worktrees but never above the project root and never on `/`, `~`, `/tmp`, etc.
+
+```
+TodoWrite([{id: "safety", content: "🛡️ Load SAFETY.md (binding rules)", status: "completed"}])
 ```
 
 ---
