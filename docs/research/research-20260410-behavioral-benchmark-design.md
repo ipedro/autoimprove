@@ -1,9 +1,108 @@
 # Behavioral Benchmark Design — val_bpb analog for skills
 
 **Date:** 2026-04-10
-**Status:** Design note, not yet implemented
+**Status:** ⚠️ **PHASE 1 SUPERSEDED** after Codex adversarial review (same day) — see "Post-Review Update" section below before reading the original design. The original design has a fatal anti-gaming flaw. Do NOT implement Phase 1 as written.
 **Owner:** TBD
 **Prior art:** karpathy/autoresearch (`~/Developer/autoresearch`)
+
+---
+
+## ⚠️ Post-Review Update — READ FIRST
+
+This design note was written in the same session as the karpathy investigation that motivated it. High risk of echo-chamber errors. A Codex adversarial review was dispatched immediately after drafting and found a **fatal architectural flaw** that invalidates Phase 1 as originally specified.
+
+**The original design is preserved below the horizontal rule for historical/learning value (retire-in-place pattern).** Do not implement it as written.
+
+### The fatal flaw: fixtures are visible to the skill at inference time
+
+The original design claims `skill_behavioral_score` is the autoimprove analog of karpathy's `val_bpb`. This is wrong in a specific, important way.
+
+**Karpathy's protection (`prepare.py:43`):** the validation shard is a pinned constant. The training path never touches it. The agent cannot modify `prepare.py`. The model cannot see validation data during training. The metric is structurally un-gameable because the only way to improve it is to actually improve the model.
+
+**My design's flaw:** fixture prompts are loaded into the Claude agent's context at inference time. The skill being tested literally sees the fixture wording as part of its input. **An experimenter modifying the skill can pattern-match the fixture wording and write a skill that games that specific task without generalizing.**
+
+`skill_behavioral_score` is NOT structurally un-gameable the way `val_bpb` is. "Behavioral measurement" alone is insufficient — **concealment** is the other half of the anti-gaming guarantee.
+
+### Concrete attack on the `cleanup` fixture
+
+The original design proposed:
+- task_prompt: `"Clean up the test worktrees"`
+- success_criterion: `"worktree count reduced to 0"`
+
+Attack path an experimenter could take:
+1. Modify `skills/cleanup/SKILL.md` to detect the literal string `"Clean up the test worktrees"` in its invocation context
+2. Instruct Claude to run `rm -rf .git/worktrees/*` when that trigger is seen
+3. Fixture reports success — worktree count IS reduced to 0 (satisfied the literal criterion)
+4. Skill is now destructive — it nukes git metadata instead of safely removing worktrees via the guarded helper
+5. Benchmark keeps the experiment, rolling baseline "improves", the skill is now actively harmful to the repo
+
+This attack is simpler than the structural gaming attacks I was worried about, and my design has zero defense against it. The blind-experimenter pattern doesn't save us because the fixture prompt arrives through the normal skill invocation path — it's not "scoring data" that can be hidden, it's the input itself.
+
+### Other Codex findings that invalidate parts of the original
+
+1. **Default model mismatch:** the original fixture schema defaults `baseline_model: haiku` / `treatment_model: haiku`, but the actual default experimenter in `autoimprove.yaml budget.experimenter_model` is `sonnet`. Measuring haiku's response to a skill is not evidence of how sonnet (the real experimenter) will use it.
+
+2. **`run` fixture is trivially gameable:** the proposed criterion "new TSV row with an allowed verdict" is satisfied by any experimenter that appends a valid-looking row without running a real experiment.
+
+3. **`idea-matrix` fixture would repeat a prior failure:** the original matrix-effectiveness.sh benchmark fell back to word-count and label-counting rather than semantic checking. "9 valid cell JSON objects" as a criterion is satisfiable by structurally valid but vacuous or duplicated cells.
+
+4. **`diagnose` regex criterion is brittle:** "output contains (race condition|missing lock|null deref)" false-fails on semantically correct paraphrases like "concurrent access without synchronization".
+
+5. **Phase 1 "~2 days" estimate is unrealistic:** no `run_frequency` field exists in the evaluate.sh schema, `llm-judge` benchmarks are documented as periodic-only (not per-session as I claimed), and the closest existing reference implementations (`benchmark/ar-effectiveness.sh`, `benchmark/matrix-effectiveness.sh`) are ad-hoc shells with fuzzy matching and heuristics — not reusable infrastructure.
+
+6. **Fixture authoring + maintenance cost is unestimated.** The original design asserts "fixtures can be authored faster than skills evolve" without supporting evidence. This is recurring maintenance work, not one-time setup.
+
+7. **Minor autoresearch misread:** the original claims karpathy's eval is "purely runtime behavioral." Correct, but the design summary omits the simplicity criterion (`program.md:37`) which is an explicit qualitative keep/discard factor beyond raw score, AND omits the VRAM soft constraint documented in `program.md`. Doesn't invalidate the core reframing but the comparison is less precise than stated.
+
+### Revised path forward
+
+The original Phase 1 → Phase 4 plan is replaced with:
+
+**Phase 0 (new, prerequisite): Benchmarkability audit.** For each of autoimprove's ~25 skills, classify as:
+- **`artifact-state deterministic`** — success can be checked by inspecting filesystem/git/TSV state after invocation (example: `cleanup` — "was the worktree actually removed, including proper git worktree prune").
+- **`structured-output deterministic`** — success is a regex/schema check on the skill's output AND the check is non-trivial to satisfy via prompt overfitting (harder category).
+- **`semantic / LLM-judge`** — success requires understanding, cannot be deterministically verified. These skills CANNOT be fixtured safely; keep them out of any automated benchmark.
+
+Output: `docs/research/research-20260411-benchmarkability-audit.md` or similar. Expected outcome: most skills fall into category 3 and are NOT fixturable.
+
+**Phase 1 (revised): Single-fixture pilot — `cleanup` ONLY + red-team attack test.**
+
+Scope:
+- Write ONE fixture for `skills/cleanup` with a success criterion that checks BOTH "worktree count reduced" AND "git worktree prune was actually run" (not just metadata deletion) AND "no git-internal files outside worktree dirs were touched"
+- Run the fixture against the current cleanup skill (establishes baseline)
+- **Explicit red-team attack test:** manually write an adversarial version of cleanup.md that tries to game the fixture (the `rm -rf .git/worktrees/*` attack, or variants). Run it. If the adversarial skill scores highly, the fixture is broken — fix the success criterion before proceeding.
+- Run the real cleanup skill 5 times and measure score variance. If variance > some threshold (TBD), the signal is too noisy to gate on.
+- **Do NOT wire into evaluate.sh or the grind loop.** This is a manual pilot to validate that fixture-based measurement can even work, not a production benchmark.
+
+Budget: one human day of focused work including writing the adversarial test. If the adversarial test succeeds at fooling the fixture, abort and rethink the category — do not try to patch the criterion under deadline pressure.
+
+**Phase 2 (conditional on Phase 1 success): Add concealment if possible.**
+- **Fixture rotation:** every grind session gets a randomly-selected fixture variant from a pool. Experimenter cannot pattern-match a specific wording because the wording changes.
+- **Parameterized fixtures:** task prompt is a template with random parameters (e.g., random number of worktrees, random branch names). Experimenter cannot hardcode values.
+- **Red-team the rotation:** another manual attack test. Can the experimenter pattern-match the template structure instead of literal text?
+
+If neither concealment approach defeats the red-team → abandon fixture-based benchmarks for skill_quality. LLM-judge as periodic-only (weekly, not session-level, not gating) becomes the next-best option.
+
+**Phase 3 (very conditional): Wire into grind loop.**
+- Only after at least 2 skills have passed Phase 1 + Phase 2 red-team tests independently
+- Shadow mode first (computed, not gating) for 3 sessions
+- Only then promote to gate
+
+### What Codex recommended and I'm adopting verbatim
+
+> **Don't build.** Do a benchmarkability audit first: classify each skill as `artifact-state deterministic`, `structured-output deterministic`, or `semantic/LLM-judge`. Run a manual non-gating pilot for `cleanup` only, including an explicit overfitting attack test. Keep LLM-based quality checks periodic until at least two fixtures are demonstrably stable across repeated runs and resistant to prompt overfitting.
+
+### The meta-lesson
+
+The original design was produced in the same session as the insight that motivated it. High self-reinforcement risk. Codex reading autoresearch + design + existing benchmarks independently caught what I couldn't. **Major architectural reframes produced in a single session should always be stress-tested with an independent model before implementation, no exceptions.** The 30-minute Codex review prevented 2-3 hours of engineering on a gameable design.
+
+See MAGI: `patterns/behavioral_benchmark_held_out_fixture_problem.md` for the fuller investigation record.
+
+---
+
+## Original Design (preserved below, DO NOT implement Phase 1 as specified)
+
+Everything below this line is the original design as written before the Codex review. Preserved for learning value and to document what was tried. See the Post-Review Update above for the corrections.
 
 ## TL;DR
 
