@@ -1,24 +1,54 @@
 #!/usr/bin/env bash
-# replay-pattern-layer.sh — replay candidate rubric signals against a past experiment
+# replay-pattern-layer.sh — RETIRED 2026-04-10
 #
-# Usage:
+# ═══════════════════════════════════════════════════════════════════════════
+# RETIRED — DO NOT WIRE INTO THE GRIND LOOP
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# This script was built as the first step of the Rubric Escalation Ladder
+# design (idea-matrix 2026-04-10 Cell 8). The design has been ABANDONED —
+# karpathy/autoresearch investigation showed that structural metrics (including
+# sophisticated pattern-grep escalation ladders) are architecturally wrong for
+# skill quality. See:
+#
+#   docs/research/research-20260410-behavioral-benchmark-design.md
+#   MAGI: patterns/autoresearch_behavioral_vs_structural_metrics.md
+#
+# Summary of why this approach was retired:
+#
+#   1. The target metric this script was meant to escalate FROM (imperative_ratio)
+#      is now deleted (commit 1a0bf5e). It was empirically anti-quality vs the
+#      superpowers gold standard — autoimprove scored 2.85x higher than the
+#      reference corpus on a "higher is better" metric.
+#
+#   2. Even the bullet-aware "smart" regex becomes noise at the gold standard
+#      (superpowers 0.0475 vs autoimprove 0.0467 — statistically equivalent).
+#      Fixing the regex does not produce signal; the category is wrong.
+#
+#   3. karpathy's autoresearch uses ONE behavioral metric (val_bpb on a pinned
+#      held-out shard) and makes anti-gaming architectural (prepare.py
+#      immutable), not procedural (pattern escalation). Our entire structural
+#      metric strategy inverts this.
+#
+#   4. The Rubric Escalation Ladder would just replace one structural measurer
+#      with a more sophisticated structural measurer. Same category, same trap.
+#      The replacement design (skill_behavioral_score in the research note
+#      above) invokes skills on fixed test tasks and measures outcome.
+#
+# WHAT THIS SCRIPT STILL IS USEFUL FOR:
+#
+#   One-shot diagnostic when investigating regex bugs in self-metrics.sh or
+#   similar benchmark scripts. Running it against a specific commit shows
+#   the naive vs bullet-aware directive ratio side by side, which was how
+#   the original bug was diagnosed. Do NOT wire it into any automated path.
+#
+# Original usage (unchanged, still works):
 #   scripts/replay-pattern-layer.sh <commit_sha> [parent_sha]
-#
-# If parent_sha is omitted, <commit_sha>^ is used.
-#
-# Computes per-file rubric signals (presence + ratio deltas) for each skills/*/SKILL.md
-# touched by the commit, and outputs a JSON document with the suspect_dimensions list.
 #
 # Exit codes:
 #   0  — replay succeeded, suspect list computed (may be empty or non-empty)
 #   1  — commit not found / invalid args / no SKILL.md files changed
-#
-# Validation contract:
-#   This script is part of the Rubric Escalation Ladder design (idea-matrix 2026-04-10).
-#   Before wiring the ladder into the grind loop, this script MUST be run against
-#   experiments 075 (eeb8900) and 081 (39f18cb). Both must produce a non-empty
-#   suspect_dimensions list or the design is inverted and must be redesigned to
-#   use ratio-delta signals only (dropping presence-based patterns).
+# ═══════════════════════════════════════════════════════════════════════════
 
 set -uo pipefail
 
