@@ -117,15 +117,23 @@ TaskUpdate(taskId: next_task.id, status: "in_progress", owner: "orchestrator")
 
 ### Build the experimenter prompt
 
-Include:
-- Theme name
-- Constraints: `max_files`, `max_lines`
-- Forbidden paths from `constraints.forbidden_paths`
-- Test modification policy from `constraints.test_modification`
-- Scope constraint from `focus_paths[THEME]` in `autoimprove.yaml` (if defined): list the paths/globs as "Only modify files matching: <paths>". If `focus_paths` is not defined for the theme, experimenter has full autonomy within `max_files`/`max_lines`.
-- If `next_task.metadata.goal_name` is set, include a qualitative goal hint derived from that name, but strip raw metric identifiers, operators, and numeric thresholds before adding it to the prompt.
-- Recent experiment summaries (from 3e)
-- Focus files from harvest scan (from 3f), if any
+Include, in this order (order matters — safety rules come first):
+
+1. **Inline the full contents of `SAFETY.md`** from the project root. Read it at spawn time, do not reference it by path (spawned agents may not resolve relative paths correctly, and the agent running on a different machine cannot assume any other safety file exists). Wrap the content in a fenced header:
+   ```
+   ## Safety Rules (non-negotiable)
+   <verbatim contents of autoimprove/SAFETY.md>
+   ---
+   ```
+   **Rationale:** the repo-local `SAFETY.md` is the portable defense layer for the experimenter threat model. Pedro's personal `~/.claude/UNBREAKABLE_RULES.md` is environment-specific and MUST NOT be assumed to exist. See `docs/research/pilot-cleanup/RESULTS-extension.md` for the threat-model analysis that motivated this.
+2. Theme name
+3. Constraints: `max_files`, `max_lines`
+4. Forbidden paths from `constraints.forbidden_paths`
+5. Test modification policy from `constraints.test_modification`
+6. Scope constraint from `focus_paths[THEME]` in `autoimprove.yaml` (if defined): list the paths/globs as "Only modify files matching: <paths>". If `focus_paths` is not defined for the theme, experimenter has full autonomy within `max_files`/`max_lines`.
+7. If `next_task.metadata.goal_name` is set, include a qualitative goal hint derived from that name, but strip raw metric identifiers, operators, and numeric thresholds before adding it to the prompt.
+8. Recent experiment summaries (from 3e)
+9. Focus files from harvest scan (from 3f), if any
 
 Do NOT include: metric names, benchmark definitions, scoring logic, tolerance/significance values, current scores, evaluate-config.json contents, or trust tier number.
 

@@ -183,6 +183,7 @@ themes:
 constraints:
   forbidden_paths:
     - autoimprove.yaml          # never auto-modify config
+    - SAFETY.md                 # repo-local experimenter safety rules — never modify
     - scripts/evaluate.sh       # gate script is sacred
     - benchmark/**              # benchmark scripts are sacred
     - .claude-plugin/**         # plugin cache — not source

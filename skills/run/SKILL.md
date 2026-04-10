@@ -478,7 +478,7 @@ If `MAX_PARALLEL` is 0, stop the grind loop immediately and skip to Session End 
 
 The `MAX_PARALLEL` value is the upper bound on concurrent experimenter agents for this session. Pass it to the experiment loop (section 3) so the loop respects it when spawning agents.
 
-> **Hard ceiling:** `MAX_PARALLEL` must never exceed 5 (§3 of UNBREAKABLE_RULES — max 5 concurrent subagents per agent). The scaling table already respects this; if `budget.max_parallel` is set higher than 5, clamp it to 5.
+> **Hard ceiling:** `MAX_PARALLEL` must never exceed 5 (rule 8 of `SAFETY.md` — max 5 concurrent subagents per agent). The scaling table already respects this; if `budget.max_parallel` is set higher than 5, clamp it to 5.
 
 ---
 

@@ -85,7 +85,7 @@ Spawn the following two agents **in parallel** (both at the same time):
 ```
 model: claude-opus-4-6
 prompt: |
-  UNBREAKABLE_RULES apply — rules are in ~/.claude/UNBREAKABLE_RULES.md and are non-negotiable.
+  Repo-local SAFETY rules apply. Before beginning, read `SAFETY.md` at the project root (it contains the experimenter safety contract for this repo) and treat its rules as non-negotiable. If `SAFETY.md` is not found, STOP and report — do not proceed without it.
 
   You are running an adversarial-style code review. Your job is to find ALL real issues in the following code or diff.
 
@@ -118,7 +118,7 @@ prompt: |
 ```
 model: claude-haiku-4-5-20251001
 prompt: |
-  UNBREAKABLE_RULES apply — rules are in ~/.claude/UNBREAKABLE_RULES.md and are non-negotiable.
+  Repo-local SAFETY rules apply. Before beginning, read `SAFETY.md` at the project root (it contains the experimenter safety contract for this repo) and treat its rules as non-negotiable. If `SAFETY.md` is not found, STOP and report — do not proceed without it.
 
   You are running an adversarial-style code review. Your job is to find ALL real issues in the following code or diff.
 

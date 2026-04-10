@@ -37,7 +37,7 @@ themes:
 constraints:
   forbidden_paths:
     - autoimprove.yaml
-    - UNBREAKABLE_RULES.md
+    - SAFETY.md          # repo-local experimenter safety rules — never modify
     - CLAUDE.md
     - settings.json
     - plugins/installed_plugins.json
