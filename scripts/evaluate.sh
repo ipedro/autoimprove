@@ -215,10 +215,12 @@ score_results() {
       fi
 
       # Calculate delta_pct with bc -l
-      # Handle zero baseline
-      local delta_pct
-      if [ "$baseline_val" = "0" ]; then
-        if [ "$candidate_val" = "0" ]; then
+      # Handle zero baseline (use bc numeric comparison to handle 0.0, 0.0000, etc.)
+      local delta_pct is_zero_baseline is_zero_candidate
+      is_zero_baseline=$(echo "$baseline_val == 0" | bc -l)
+      if [ "$is_zero_baseline" = "1" ]; then
+        is_zero_candidate=$(echo "$candidate_val == 0" | bc -l)
+        if [ "$is_zero_candidate" = "1" ]; then
           delta_pct="0"
         else
           delta_pct="1"
