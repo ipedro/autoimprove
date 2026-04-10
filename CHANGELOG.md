@@ -2,6 +2,31 @@
 
 All notable changes to autoimprove are documented here.
 
+## [0.6.0] — 2026-04-10 — Worktree Sweep + Anti-Padding Defenses
+
+### Added
+- `feat(scripts)`: `cleanup-worktrees.sh` — idempotent sweep helper for stale experiment worktrees and branches. Covers both `autoimprove/*` and the sibling `worktree-agent-*` namespace created by Claude Code's `Agent(isolation:"worktree")` mode. Three guards (live-worktree, `exp-*` tag, in-flight `context.json`) protect concurrent work.
+- `feat(run)`: session-start (2f-ii) and session-end (4b-ii) cleanup sweeps enforce invariant 5 in practice — no longer aspirational. Summary surfaces `Cleanup: N worktrees, M branches` so drift becomes visible.
+- `feat(cleanup)`: `/autoimprove cleanup` command + skill — manual sweep with `--dry-run` and `--verbose` flags. Same guards as the automatic sweeps.
+- `feat(run)`: integrate autotune health check as optional pre-grind step — warns on critical issues (score < 50) before spawning experimenters.
+- `feat(gates)`: hard-discard padding gate — prevents skill inflation >50% without new examples.
+- `feat(metrics)`: `padding_alarm` metric to detect inflation attacks in real experiments.
+- `feat(metrics)`: replace gameable metrics with structural proxies (anti-Goodhart).
+- `feat(prompt-testing)`: `scan-and-scaffold.sh` — repo-wide gap detection with recency priority.
+
+### Fixed
+- `fix(prompt-testing)`: correct test directory and unit test patterns.
+- `fix(prompt-testing)`: cheat mode enforcement + execution section + superpowers reference.
+- `fix(test-helpers)`: cross-platform compatibility for macOS + Linux (no GNU timeout dependency).
+
+### Changed
+- `refactor(prompt-testing)`: `scaffold-test.sh` + inline helpers + script-first execution.
+
+### Other
+- `ux(ar)`: per-round task tree for FULL mode round 2+.
+- `ux(ar)`: replace TodoWrite with TaskCreate/TaskUpdate for E→A→J visibility.
+- `docs(metrics)`: document attack vectors for disabled `skill_depth` / `agent_sections` metrics.
+
 ## [0.5.1] — 2026-04-03 — Xavier School Migration & Skill Polish
 
 ### Added
