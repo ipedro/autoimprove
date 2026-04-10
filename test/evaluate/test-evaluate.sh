@@ -3965,5 +3965,155 @@ assert_json_field "lib-within-tol: verdict_logic is no_improvements" "$result" '
 rm -f "$lib_within_tol_config" "$lib_within_tol_baseline"
 
 echo ""
+echo "=== LLM-Judge Benchmark Type Tests ==="
+
+# Test: llm-judge benchmark is skipped by default (no --include-llm-benchmarks flag)
+# Without the flag, benchmarks typed "llm-judge" are silently skipped.
+# In init mode this means the metric never appears in .metrics.
+echo "--- Test: llm-judge benchmark skipped in default mode (no flag) ---"
+llm_skip_config=$(mktemp)
+cat > "$llm_skip_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "llm-bench",
+      "type": "llm-judge",
+      "command": "echo '{\"quality\": 99}'",
+      "metrics": [
+        {
+          "name": "quality",
+          "extract": "json:.quality",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$llm_skip_config" /dev/null 2>/dev/null)
+assert_json_field "llm-judge skipped: mode is init" "$result" '.mode' 'init'
+# quality metric must NOT appear — llm-judge was skipped
+quality_present=$(echo "$result" | jq 'has("metrics") and (.metrics | has("quality"))')
+assert_eq "llm-judge skipped: quality not in metrics" "false" "$quality_present"
+rm -f "$llm_skip_config"
+
+# Test: llm-judge benchmark IS included when --include-llm-benchmarks is passed
+echo "--- Test: llm-judge benchmark included with --include-llm-benchmarks flag ---"
+llm_include_config=$(mktemp)
+cat > "$llm_include_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "llm-bench",
+      "type": "llm-judge",
+      "command": "echo '{\"quality\": 88}'",
+      "metrics": [
+        {
+          "name": "quality",
+          "extract": "json:.quality",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$llm_include_config" /dev/null --include-llm-benchmarks 2>/dev/null)
+assert_json_field "llm-judge included: mode is init" "$result" '.mode' 'init'
+assert_json_field "llm-judge included: quality metric extracted" "$result" '.metrics.quality' '88'
+rm -f "$llm_include_config"
+
+# Test: mixed benchmarks (one deterministic, one llm-judge) — without flag only deterministic runs
+echo "--- Test: mixed deterministic+llm-judge — only deterministic runs without flag ---"
+mixed_llm_config=$(mktemp)
+cat > "$mixed_llm_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "fast-bench",
+      "type": "deterministic",
+      "command": "echo '{\"count\": 42}'",
+      "metrics": [
+        {
+          "name": "count",
+          "extract": "json:.count",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    },
+    {
+      "name": "slow-bench",
+      "type": "llm-judge",
+      "command": "echo '{\"score\": 99}'",
+      "metrics": [
+        {
+          "name": "score",
+          "extract": "json:.score",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+result=$("$EVALUATE" "$mixed_llm_config" /dev/null 2>/dev/null)
+assert_json_field "mixed: count metric present (deterministic)" "$result" '.metrics.count' '42'
+score_present=$(echo "$result" | jq 'has("metrics") and (.metrics | has("score"))')
+assert_eq "mixed: score metric absent (llm-judge skipped)" "false" "$score_present"
+rm -f "$mixed_llm_config"
+
+# Test: llm-judge benchmark participates in scoring when flag is passed
+# quality: baseline=80, candidate=88 → delta=+10% > significance=0.01 → improved → keep
+echo "--- Test: llm-judge participates in scoring with --include-llm-benchmarks ---"
+llm_score_config=$(mktemp)
+cat > "$llm_score_config" <<EOF
+{
+  "gates": [{"name": "pass", "command": "true"}],
+  "benchmarks": [
+    {
+      "name": "llm-score-bench",
+      "type": "llm-judge",
+      "command": "echo '{\"quality\": 88}'",
+      "metrics": [
+        {
+          "name": "quality",
+          "extract": "json:.quality",
+          "direction": "higher_is_better",
+          "tolerance": 0.02,
+          "significance": 0.01
+        }
+      ]
+    }
+  ],
+  "regression_tolerance": 0.02,
+  "significance_threshold": 0.01
+}
+EOF
+llm_score_baseline=$(mktemp)
+echo '{"metrics":{"quality":80},"sha":"abc123","timestamp":"2026-03-25T00:00:00Z"}' > "$llm_score_baseline"
+result=$("$EVALUATE" "$llm_score_config" "$llm_score_baseline" --include-llm-benchmarks 2>/dev/null)
+assert_json_field "llm scoring: verdict is keep" "$result" '.verdict' 'keep'
+assert_json_field "llm scoring: quality in improved" "$result" '.improved | contains(["quality"])' 'true'
+assert_json_field "llm scoring: no regressions" "$result" '.regressed | length' '0'
+rm -f "$llm_score_config" "$llm_score_baseline"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
