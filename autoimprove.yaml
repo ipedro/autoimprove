@@ -89,12 +89,12 @@ benchmarks:
         significance: 0.01
         description: "Average code/example blocks per skill file — concrete > abstract"
 
-      - name: imperative_ratio
-        extract: "json:.imperative_ratio"
-        direction: higher_is_better
-        tolerance: 0.0
-        significance: 0.01
-        description: "Fraction of skill lines that are directives (use/run/never/do not) — directives > descriptions"
+      # imperative_ratio REMOVED 2026-04-10 — empirically anti-quality vs superpowers.
+      # Naive regex: autoimprove 0.0316 vs superpowers 0.0111 (we scored 2.85x higher than gold standard).
+      # Smart regex (bullet-aware fix): autoimprove 0.0467 vs superpowers 0.0475 (statistically noise).
+      # Smoking gun: using-superpowers.md scores 0.0000 under current benchmark regex.
+      # Line-counting cannot measure directive density in narrative-rich skills.
+      # See patterns/imperative_ratio_empirical_anti_quality.md for the full investigation.
 
       - name: trigger_precision
         extract: "json:.trigger_precision"
