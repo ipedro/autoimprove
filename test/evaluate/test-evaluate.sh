@@ -4316,5 +4316,196 @@ rm -rf "$tag_repo"
 trap - EXIT
 
 echo ""
+echo "=== ar-write-round.sh Tests ==="
+
+AR_WRITE="$SCRIPT_DIR/../../scripts/ar-write-round.sh"
+
+# Helper: create a temp dir with minimal JSON agent output files for ar-write-round tests.
+# Prints the dir path. Caller must rm -rf it on exit.
+_make_ar_dir() {
+  local d
+  d=$(mktemp -d)
+  echo '{"summary":"enthusiast summary","score":8}' > "$d/enthusiast.json"
+  echo '{"summary":"adversary summary","concerns":2}' > "$d/adversary.json"
+  echo '{"summary":"judge summary","convergence":false}' > "$d/judge.json"
+  echo "$d"
+}
+
+# Test: missing arguments exits 1 with usage message
+echo "--- Test: ar-write-round missing args exits 1 ---"
+set +e
+ar_no_args_out=$(bash "$AR_WRITE" 2>&1)
+ar_no_args_exit=$?
+set -e
+if [ "$ar_no_args_exit" -eq 1 ]; then
+  echo "  PASS: exits 1 with no args"
+  ((PASS++)) || true
+else
+  echo "  FAIL: expected exit 1, got $ar_no_args_exit"
+  ((FAIL++)) || true
+fi
+if echo "$ar_no_args_out" | grep -qi "usage"; then
+  echo "  PASS: usage message printed on no args"
+  ((PASS++)) || true
+else
+  echo "  FAIL: no usage message found (got: $ar_no_args_out)"
+  ((FAIL++)) || true
+fi
+
+# Test: non-existent run_dir exits 1
+echo "--- Test: ar-write-round non-existent run_dir exits 1 ---"
+ar_dir=$(_make_ar_dir)
+set +e
+bash "$AR_WRITE" "/nonexistent/run/dir" "1" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "$ar_dir/judge.json" >/dev/null 2>&1
+ar_bad_dir_exit=$?
+set -e
+if [ "$ar_bad_dir_exit" -eq 1 ]; then
+  echo "  PASS: exits 1 when run_dir does not exist"
+  ((PASS++)) || true
+else
+  echo "  FAIL: expected exit 1 for missing run_dir, got $ar_bad_dir_exit"
+  ((FAIL++)) || true
+fi
+rm -rf "$ar_dir"
+
+# Test: missing agent JSON file exits 1
+echo "--- Test: ar-write-round missing agent file exits 1 ---"
+ar_dir=$(_make_ar_dir)
+run_dir=$(mktemp -d)
+set +e
+bash "$AR_WRITE" "$run_dir" "1" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "/nonexistent/judge.json" >/dev/null 2>&1
+ar_missing_file_exit=$?
+set -e
+if [ "$ar_missing_file_exit" -eq 1 ]; then
+  echo "  PASS: exits 1 when judge JSON file is missing"
+  ((PASS++)) || true
+else
+  echo "  FAIL: expected exit 1 for missing file, got $ar_missing_file_exit"
+  ((FAIL++)) || true
+fi
+rm -rf "$ar_dir" "$run_dir"
+
+# Test: successful run creates round-N.json with correct fields
+echo "--- Test: ar-write-round creates round-1.json with correct structure ---"
+ar_dir=$(_make_ar_dir)
+run_dir=$(mktemp -d)
+set +e
+bash "$AR_WRITE" "$run_dir" "1" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "$ar_dir/judge.json" >/dev/null 2>&1
+ar_success_exit=$?
+set -e
+if [ "$ar_success_exit" -eq 0 ]; then
+  echo "  PASS: exits 0 on success"
+  ((PASS++)) || true
+else
+  echo "  FAIL: expected exit 0, got $ar_success_exit"
+  ((FAIL++)) || true
+fi
+if [ -f "$run_dir/round-1.json" ]; then
+  echo "  PASS: round-1.json created"
+  ((PASS++)) || true
+  round_json=$(cat "$run_dir/round-1.json")
+  assert_json_field "round field is 1" "$round_json" '.round' '1'
+  assert_json_field "run_id is basename of run_dir" "$round_json" '.run_id' "$(basename "$run_dir")"
+  assert_json_field "model defaults to haiku" "$round_json" '.model' 'haiku'
+  assert_json_field "converged defaults false when judge has convergence:false" "$round_json" '.converged' 'false'
+  assert_json_field "enthusiast embedded" "$round_json" '.enthusiast.score' '8'
+  assert_json_field "adversary embedded" "$round_json" '.adversary.concerns' '2'
+  assert_json_field "errors key absent when empty" "$round_json" '.errors' 'null'
+else
+  echo "  FAIL: round-1.json was not created"
+  ((FAIL++)) || true
+fi
+rm -rf "$ar_dir" "$run_dir"
+
+# Test: convergence:true in judge output sets converged=true
+echo "--- Test: ar-write-round sets converged=true when judge has convergence:true ---"
+ar_dir=$(_make_ar_dir)
+echo '{"summary":"judge","convergence":true}' > "$ar_dir/judge.json"
+run_dir=$(mktemp -d)
+bash "$AR_WRITE" "$run_dir" "2" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "$ar_dir/judge.json" >/dev/null 2>&1
+round_json=$(cat "$run_dir/round-2.json")
+assert_json_field "converged=true when judge.convergence is true" "$round_json" '.converged' 'true'
+rm -rf "$ar_dir" "$run_dir"
+
+# Test: AR_ROUND_MODEL env var overrides default model
+echo "--- Test: ar-write-round respects AR_ROUND_MODEL env var ---"
+ar_dir=$(_make_ar_dir)
+run_dir=$(mktemp -d)
+AR_ROUND_MODEL="opus" bash "$AR_WRITE" "$run_dir" "1" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "$ar_dir/judge.json" >/dev/null 2>&1
+round_json=$(cat "$run_dir/round-1.json")
+assert_json_field "model is opus when AR_ROUND_MODEL=opus" "$round_json" '.model' 'opus'
+rm -rf "$ar_dir" "$run_dir"
+
+# Test: AR_ROUND_ERRORS populates errors array in round JSON
+echo "--- Test: ar-write-round includes errors array when AR_ROUND_ERRORS is set ---"
+ar_dir=$(_make_ar_dir)
+run_dir=$(mktemp -d)
+AR_ROUND_ERRORS='["timeout","retried"]' bash "$AR_WRITE" "$run_dir" "1" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "$ar_dir/judge.json" >/dev/null 2>&1
+round_json=$(cat "$run_dir/round-1.json")
+assert_json_field "errors array has 2 entries" "$round_json" '.errors | length' '2'
+assert_json_field "first error is timeout" "$round_json" '.errors[0]' 'timeout'
+rm -rf "$ar_dir" "$run_dir"
+
+# Test: meta.json is updated when present (rounds_completed incremented)
+echo "--- Test: ar-write-round updates meta.json rounds_completed when present ---"
+ar_dir=$(_make_ar_dir)
+run_dir=$(mktemp -d)
+echo '{"rounds_completed":0,"run_id":"test-run"}' > "$run_dir/meta.json"
+bash "$AR_WRITE" "$run_dir" "3" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "$ar_dir/judge.json" >/dev/null 2>&1
+meta_json=$(cat "$run_dir/meta.json")
+assert_json_field "rounds_completed updated to 3" "$meta_json" '.rounds_completed' '3'
+assert_json_field "run_id preserved in meta.json" "$meta_json" '.run_id' 'test-run'
+rm -rf "$ar_dir" "$run_dir"
+
+# Test: missing meta.json does not cause failure (warning only)
+echo "--- Test: ar-write-round succeeds when meta.json is absent (warning only) ---"
+ar_dir=$(_make_ar_dir)
+run_dir=$(mktemp -d)
+set +e
+warn_out=$(bash "$AR_WRITE" "$run_dir" "1" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "$ar_dir/judge.json" 2>&1)
+warn_exit=$?
+set -e
+if [ "$warn_exit" -eq 0 ]; then
+  echo "  PASS: exits 0 even when meta.json is absent"
+  ((PASS++)) || true
+else
+  echo "  FAIL: expected exit 0 without meta.json, got $warn_exit"
+  ((FAIL++)) || true
+fi
+if echo "$warn_out" | grep -q "warning"; then
+  echo "  PASS: warning emitted about missing meta.json"
+  ((PASS++)) || true
+else
+  echo "  FAIL: expected warning about missing meta.json (got: $warn_out)"
+  ((FAIL++)) || true
+fi
+rm -rf "$ar_dir" "$run_dir"
+
+# Test: malformed agent JSON exits 1 with error message
+echo "--- Test: ar-write-round exits 1 on malformed agent JSON ---"
+ar_dir=$(_make_ar_dir)
+echo 'NOT VALID JSON {{{' > "$ar_dir/enthusiast.json"
+run_dir=$(mktemp -d)
+set +e
+malformed_out=$(bash "$AR_WRITE" "$run_dir" "1" "$ar_dir/enthusiast.json" "$ar_dir/adversary.json" "$ar_dir/judge.json" 2>&1)
+malformed_exit=$?
+set -e
+if [ "$malformed_exit" -eq 1 ]; then
+  echo "  PASS: exits 1 on malformed JSON"
+  ((PASS++)) || true
+else
+  echo "  FAIL: expected exit 1 for malformed JSON, got $malformed_exit"
+  ((FAIL++)) || true
+fi
+if echo "$malformed_out" | grep -q "malformed"; then
+  echo "  PASS: error message mentions malformed"
+  ((PASS++)) || true
+else
+  echo "  FAIL: expected 'malformed' in error output (got: $malformed_out)"
+  ((FAIL++)) || true
+fi
+rm -rf "$ar_dir" "$run_dir"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
