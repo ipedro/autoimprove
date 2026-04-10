@@ -4530,5 +4530,78 @@ fi
 rm -f "$tests_only_tmp"
 
 echo ""
+echo "=== Multi-tenant portability tests ==="
+
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Test: evaluate.sh runs from non-plugin-root CWD via ${CLAUDE_SKILL_DIR} pattern
+echo "--- Test: evaluate.sh --tests-only runs from external CWD ---"
+mt_tmp=$(mktemp -d)
+mt_skill_dir="$PLUGIN_ROOT/skills/test"
+# Minimal evaluate-config.json with one trivial gate
+mkdir -p "$mt_tmp/experiments"
+cat > "$mt_tmp/experiments/evaluate-config.json" <<EOF
+{"gates":[{"name":"mt_trivial","command":"true"}],"benchmarks":[],"regression_tolerance":0.02,"significance_threshold":0.01}
+EOF
+mt_result=$(cd "$mt_tmp" && bash "$mt_skill_dir/../_shared/evaluate.sh" --tests-only experiments/evaluate-config.json /dev/null 2>&1) || true
+mt_exit=$?
+assert_eq "evaluate.sh exits 0 from external CWD" "0" "$mt_exit"
+assert_json_field "evaluate.sh emits tests_only mode" "$mt_result" '.mode' 'tests_only'
+assert_json_field "mt_trivial gate ran" "$mt_result" '.gates[0].name' 'mt_trivial'
+assert_json_field "mt_trivial gate passed" "$mt_result" '.gates[0].passed' 'true'
+rm -rf "$mt_tmp"
+
+# Test: cleanup-worktrees.sh runs from non-plugin-root CWD
+echo "--- Test: cleanup-worktrees.sh runs from external CWD ---"
+mt_tmp=$(mktemp -d)
+(
+  cd "$mt_tmp"
+  git init -q -b main 2>/dev/null || git init -q
+  git config user.email "portability@test.local"
+  git config user.name "portability"
+  echo "seed" > README.md
+  git add README.md && git commit -q -m "seed"
+)
+mt_skill_dir="$PLUGIN_ROOT/skills/cleanup"
+mt_result=$(cd "$mt_tmp" && bash "$mt_skill_dir/../_shared/cleanup-worktrees.sh" 2>&1) || true
+mt_exit=$?
+assert_eq "cleanup-worktrees.sh exits 0 on clean repo from external CWD" "0" "$mt_exit"
+if echo "$mt_result" | grep -q '\[cleanup\] 0 worktrees, 0 branches removed'; then
+  echo "  PASS: cleanup summary line present from external CWD"
+  ((PASS++)) || true
+else
+  echo "  FAIL: cleanup summary line missing from external CWD (got: $mt_result)"
+  ((FAIL++)) || true
+fi
+rm -rf "$mt_tmp"
+
+# Test: theme-weights.sh runs from non-plugin-root CWD
+echo "--- Test: theme-weights.sh runs from external CWD ---"
+mt_tmp=$(mktemp -d)
+cat > "$mt_tmp/autoimprove.yaml" <<EOF
+themes:
+  auto:
+    strategy: weighted_random
+    cooldown_per_theme: 3
+    priorities:
+      test_coverage: 1
+      skill_quality: 2
+EOF
+mkdir -p "$mt_tmp/experiments"
+printf 'id\ttimestamp\ttheme\tverdict\timproved_metrics\tregressed_metrics\ttokens\twall_time\tcommit_msg\n' > "$mt_tmp/experiments/experiments.tsv"
+mt_skill_dir="$PLUGIN_ROOT/skills/run"
+mt_result=$(cd "$mt_tmp" && bash "$mt_skill_dir/../_shared/theme-weights.sh" 2>/dev/null) || true
+mt_exit=$?
+assert_eq "theme-weights.sh exits 0 from external CWD" "0" "$mt_exit"
+if echo "$mt_result" | jq -e '.test_coverage' >/dev/null 2>&1; then
+  echo "  PASS: theme-weights output is valid JSON with expected theme keys"
+  ((PASS++)) || true
+else
+  echo "  FAIL: theme-weights output not valid JSON or missing theme keys (got: $mt_result)"
+  ((FAIL++)) || true
+fi
+rm -rf "$mt_tmp"
+
+echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
