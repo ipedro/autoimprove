@@ -7,9 +7,6 @@ budget:
   max_parallel: 1  # max concurrent grind loops; overridden by dynamic scaling (1-5 based on weekly burn rate)
   experimenter_model: sonnet  # model for experimenter agent; set to "haiku" for cost-optimized mode
 
-preflight:
-  autotune: true   # run autotune:autotune health check before each grind session (set false to skip)
-
 gates:
   - name: evaluate_tests
     command: bash test/evaluate/test-evaluate.sh
