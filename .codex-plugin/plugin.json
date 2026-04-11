@@ -1,0 +1,27 @@
+{
+  "name": "autoimprove",
+  "version": "0.6.0",
+  "description": "Autonomous codebase improvement loop — modify code, evaluate against benchmarks, keep or discard via git worktree isolation",
+  "author": {
+    "name": "Pedro Almeida",
+    "url": "https://github.com/ipedro"
+  },
+  "repository": "https://github.com/ipedro/autoimprove",
+  "license": "MIT",
+  "keywords": ["autoimprove", "autonomous", "improvement", "benchmarks", "experiments"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "autoimprove",
+    "shortDescription": "Benchmark-gated autonomous codebase improvement.",
+    "longDescription": "Autoimprove proposes changes in isolated worktrees, evaluates them against your gates and metrics, and keeps only non-regressing improvements.",
+    "developerName": "Pedro Almeida",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/ipedro/autoimprove",
+    "defaultPrompt": [
+      "Set up autoimprove for this repository and scaffold the benchmark config.",
+      "Run a 3-experiment autoimprove session focused on failing tests.",
+      "Summarize the last autoimprove session and explain what was kept or discarded."
+    ]
+  }
+}

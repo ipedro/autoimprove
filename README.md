@@ -1,6 +1,6 @@
 # autoimprove
 
-Autonomous codebase improvement loop for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Inspired by [karpathy/autoresearch](https://github.com/karpathy/autoresearch).
+Autonomous codebase improvement loop for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and Codex. Inspired by [karpathy/autoresearch](https://github.com/karpathy/autoresearch).
 
 You program the improvement strategy. The system modifies code, evaluates against your benchmarks, and keeps or discards changes via git worktree isolation. You wake up to a log of experiments and a better codebase.
 
@@ -24,6 +24,8 @@ The orchestrator picks improvement themes (failing tests, TODOs, coverage gaps),
 
 ## Quick start
 
+Claude Code:
+
 ```bash
 # 0. Install the plugin (one-time)
 claude plugin marketplace add https://github.com/ipedro/autoimprove
@@ -33,7 +35,13 @@ claude plugin install autoimprove
 /autoimprove init
 ```
 
-`/autoimprove init` is interactive — it detects your project, runs your tests, and scaffolds everything:
+Codex:
+
+```text
+$autoimprove:init
+```
+
+`/autoimprove init` in Claude Code and `$autoimprove:init` in Codex are interactive — they detect your project, run your tests, and scaffold everything:
 
 ```
 autoimprove initialized for my-project (Node.js)
@@ -54,12 +62,21 @@ Next step: /autoimprove run --experiments 3
 
 You don't write a benchmark script — init generates one from your project. Then:
 
+Claude Code:
+
 ```bash
 # 2. Run the improvement loop (3 trial experiments first)
 /autoimprove run --experiments 3
 
 # 3. See what happened
 /autoimprove report
+```
+
+Codex:
+
+```text
+$autoimprove:autoimprove --experiments 3
+$autoimprove:report
 ```
 
 ## The autoresearch mapping
@@ -121,22 +138,24 @@ See [docs/configuration.md](docs/configuration.md) for the full schema.
 
 ## Prerequisites
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or Codex
 - `jq` (`brew install jq` / `apt install jq`)
 - bash 4+
 - A project with a test suite
 
 ## Installation
 
-autoimprove is a Claude Code plugin. Install it once, use it in any project.
+autoimprove ships both a Claude Code plugin manifest and a Codex plugin manifest.
 
-**1. Add as a marketplace:**
+**Claude Code**
+
+1. Add as a marketplace:
 
 ```bash
 claude plugin marketplace add https://github.com/ipedro/autoimprove
 ```
 
-**2. Install the plugin:**
+2. Install the plugin:
 
 ```bash
 claude plugin install autoimprove
@@ -144,7 +163,17 @@ claude plugin install autoimprove
 
 The `/autoimprove` commands are now available in every Claude Code session.
 
-> **Local dev:** If you're working inside this repo, Claude Code auto-discovers `.claude-plugin/` — no install needed.
+**Codex**
+
+Codex support is exposed through the repo-local `.codex-plugin/plugin.json` manifest and the shared `skills/` directory. Codex presents plugin skills with the `autoimprove:` namespace so they do not collide with generic names like `init` or `report`. The primary entrypoints are:
+
+```text
+$autoimprove:init
+$autoimprove:autoimprove --experiments 3
+$autoimprove:report
+```
+
+> **Local dev:** If you're working inside this repo, Claude Code can use `.claude-plugin/plugin.json` and Codex can use `.codex-plugin/plugin.json` directly from the checkout.
 
 ## Documentation
 
@@ -159,17 +188,18 @@ The `/autoimprove` commands are now available in every Claude Code session.
 
 ```
 .claude-plugin/
-  plugin.json              # plugin manifest
-  skills/
-    orchestrator.md        # the main experiment loop
-    init.md                # scaffold autoimprove.yaml
-    report.md              # morning report
-  agents/
-    experimenter.md        # runs in worktree, blind to scoring
-  commands/
-    run.md                 # /autoimprove run
-    report.md              # /autoimprove report
-    init.md                # /autoimprove init
+  plugin.json              # Claude Code plugin manifest
+  commands/                # Claude slash-command entrypoints
+.codex-plugin/
+  plugin.json              # Codex plugin manifest
+skills/
+  autoimprove/             # Codex skill alias for the main run loop
+  init/                    # scaffold autoimprove.yaml
+  report/                  # summarize outcomes
+commands/
+  autoimprove.md           # Claude /autoimprove alias
+  autoimprove-init.md      # Claude /autoimprove init
+  autoimprove-report.md    # Claude /autoimprove report
 scripts/
   evaluate.sh              # the prepare.py — deterministic evaluation
 ```

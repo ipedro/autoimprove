@@ -1,10 +1,10 @@
 # Getting Started with autoimprove
 
-autoimprove is a Claude Code plugin that runs an autonomous improvement loop on your codebase. It spawns experiments, evaluates them against your benchmarks, and keeps only the changes that move your metrics forward — all without human intervention.
+autoimprove is a Claude Code and Codex plugin that runs an autonomous improvement loop on your codebase. It spawns experiments, evaluates them against your benchmarks, and keeps only the changes that move your metrics forward — all without human intervention.
 
 ## Prerequisites
 
-- **Claude Code** — autoimprove is a Claude Code plugin and runs entirely within it
+- **Claude Code or Codex** — autoimprove ships manifests for both runtimes
 - **jq** — used by `evaluate.sh` for JSON processing (`brew install jq` or `apt install jq`)
 - **bash 4+** — macOS ships bash 3; install bash 5 via Homebrew if needed
 - **A project with tests** — gates require a passing test suite as a safety floor
@@ -12,20 +12,36 @@ autoimprove is a Claude Code plugin that runs an autonomous improvement loop on 
 
 ## Installation
 
-**From marketplace:**
+**Claude Code**
+
+From marketplace:
 
 ```bash
 claude plugin marketplace add https://github.com/ipedro/autoimprove
 claude plugin install autoimprove
 ```
 
-**Local development:** If you're working inside the autoimprove repo, Claude Code auto-discovers `.claude-plugin/` — no install needed.
+**Codex**
 
-After installing, run `/autoimprove init` inside your project. This is an interactive command — it detects your project type, runs your test suite, and writes `autoimprove.yaml` and `benchmark/metrics.sh` for you. You don't need to write anything by hand to get started.
+Codex support is exposed through the repo-local `.codex-plugin/plugin.json` manifest and the shared `skills/` directory.
+
+Primary entrypoints:
+
+```text
+$autoimprove:init
+$autoimprove:autoimprove --experiments 3
+$autoimprove:report
+```
+
+**Local development:** If you're working inside the autoimprove repo, Claude Code can use `.claude-plugin/plugin.json` and Codex can use `.codex-plugin/plugin.json` directly from the checkout.
+
+After installing, run `/autoimprove init` in Claude Code or `$autoimprove:init` in Codex inside your project. This is an interactive workflow — it detects your project type, runs your test suite, and writes `autoimprove.yaml` and `benchmark/metrics.sh` for you. You don't need to write anything by hand to get started.
 
 ## Quick Start
 
-```
+Claude Code:
+
+```bash
 # 1. Scaffold the config (interactive — detects your project automatically)
 /autoimprove init
 
@@ -37,6 +53,14 @@ After installing, run `/autoimprove init` inside your project. This is an intera
 
 # 4. See what happened
 /autoimprove report
+```
+
+Codex:
+
+```text
+$autoimprove:init
+$autoimprove:autoimprove --experiments 3
+$autoimprove:report
 ```
 
 ### What is a benchmark?
@@ -52,11 +76,11 @@ autoimprove uses these numbers to decide whether to keep or discard each experim
 
 > **Gates protect invariants. Benchmarks measure progress.** Gates are binary — if tests fail, the experiment is discarded. Benchmarks are numeric — if a metric regresses beyond tolerance, the experiment is discarded. Gates catch regressions; benchmarks track improvement.
 
-`/autoimprove init` generates a working benchmark script automatically. The default metrics — `test_count` and `todo_count` — work for any project with a test suite. You can add custom metrics later by editing `benchmark/metrics.sh` and updating the `benchmarks:` section of `autoimprove.yaml`.
+`/autoimprove init` in Claude Code and `$autoimprove:init` in Codex generate a working benchmark script automatically. The default metrics — `test_count` and `todo_count` — work for any project with a test suite. You can add custom metrics later by editing `benchmark/metrics.sh` and updating the `benchmarks:` section of `autoimprove.yaml`.
 
 **No benchmark = no grind loop.** You need at least one metric for the loop to score experiments.
 
-### What happens during `/autoimprove run`
+### What happens during `/autoimprove run` or `$autoimprove:autoimprove`
 
 1. The orchestrator reads your `autoimprove.yaml` and measures your project's current state as the **epoch baseline** — a frozen snapshot of all your metrics at session start.
 2. For each experiment (up to `max_experiments_per_session`), a theme is picked (e.g. `failing_tests`, `lint_warnings`) and an **experimenter agent** is spawned into an isolated git worktree.
@@ -82,13 +106,13 @@ The first session is intentionally cautious. After a track record of clean keeps
 
 autoimprove also includes standalone tools that work without `autoimprove.yaml`:
 
-- **Adversarial review** (`/autoimprove-review`) — run a multi-round debate review on any code file or diff. Three agents (Enthusiast, Adversary, Judge) find and validate bugs through structured debate. See [skills: adversarial-review](skills.md#adversarial-review).
+- **Adversarial review** (`/autoimprove-review` in Claude Code or `$autoimprove:adversarial-review` in Codex) — run a multi-round debate review on any code file or diff. Three agents (Enthusiast, Adversary, Judge) find and validate bugs through structured debate. See [skills: adversarial-review](skills.md#adversarial-review).
 
-- **Idea matrix** (`/autoimprove-idea-matrix`) — explore design options systematically. 9 parallel haiku agents score individual options, hybrids, and composites on a structured rubric, then a convergence report synthesizes the winner. See [skills: idea-matrix](skills.md#idea-matrix).
+- **Idea matrix** (`/autoimprove-idea-matrix` in Claude Code or `$autoimprove:idea-matrix` in Codex) — explore design options systematically. 9 parallel haiku agents score individual options, hybrids, and composites on a structured rubric, then a convergence report synthesizes the winner. See [skills: idea-matrix](skills.md#idea-matrix).
 
-- **Challenge benchmarks** (`/autoimprove-test challenge`) — test debate agent accuracy against curated code puzzles with known answer keys. See [skills: challenge](skills.md#challenge).
+- **Challenge benchmarks** (`/autoimprove-test challenge` in Claude Code or `$autoimprove:challenge` in Codex) — test debate agent accuracy against curated code puzzles with known answer keys. See [skills: challenge](skills.md#challenge).
 
-- **Prompt testing** (`/autoimprove-prompt-testing`) — methodology guide for writing tests for skills and agents. See [skills: prompt-testing](skills.md#prompt-testing).
+- **Prompt testing** (`/autoimprove-prompt-testing` in Claude Code or `$autoimprove:prompt-testing` in Codex) — methodology guide for writing tests for skills and agents. See [skills: prompt-testing](skills.md#prompt-testing).
 
 ## Autoimprove-Compatible Development
 
