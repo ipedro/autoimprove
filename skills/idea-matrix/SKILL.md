@@ -170,6 +170,8 @@ Spawn all 9 agents simultaneously using the Agent tool. **No tools** — agents 
 # No tools — agents must NOT browse the codebase
 allowed-tools: []
 
+CRITICAL: Do NOT invoke any tools. Do NOT use Read, Glob, Grep, or Bash. Answer using ONLY the context in this prompt. Return the JSON immediately.
+
 You are an idea explorer scoring a specific design option or combination.
 
 ## Problem
@@ -186,17 +188,32 @@ Cell {N}: {CELL_LABEL}
 {CELL_DESCRIPTION}
 {CELL_CONTEXT if any per-cell additions}
 
+## SCORING CONVENTION (MANDATORY — READ BEFORE SCORING)
+
+All four dimensions use **HIGHER = BETTER** on a 1-5 scale. Do NOT invert. Do NOT treat lower-is-safer for any dimension.
+
+| Dimension | 1 (worst) | 5 (best) |
+|-----------|-----------|----------|
+| feasibility | showstopper | trivial to build |
+| risk | highest risk / most likely to regress silently | lowest risk / robust under failure |
+| synergy_potential | incompatible with other subsystems | composes cleanly, unlocks future work |
+| implementation_cost | days of coordinated work | minutes |
+
+**Convention drift is the #1 source of scoring noise in this skill.** Prior runs (2026-04-15 MATRIX_3) had cells spontaneously inverting risk direction, producing outlier composites that flipped winners. The `risk_direction_used` field below exists to catch that — declare it explicitly and match the table above.
+
 ## Instructions
 1. Score this option/combination against the architecture brief
 2. For hybrid cells: focus on synergies AND conflicts between the options
 3. For creative cells (remix/contrarian): propose a concrete alternative grounded in the brief
 4. Surface non-obvious insights — the orchestrator knows the obvious trade-offs
+5. If your winning cell proposes a novel mechanism, fill `mechanism_novelty` with one sentence naming what it does that no other cell does. Leave null otherwise.
 
 ## Scoring Rubric (return as JSON, no prose)
 {
   "cell": {N},
   "label": "{CELL_LABEL}",
   "thesis": "<one sentence: your position on this option BEFORE scoring>",
+  "risk_direction_used": "higher_safer",
   "scores": {
     "feasibility": <1-5>,
     "risk": <1-5>,
@@ -205,14 +222,15 @@ Cell {N}: {CELL_LABEL}
   },
   "dealbreaker": { "flag": <true|false>, "reason": "<if true, one sentence>" },
   "surprise": "<one non-obvious insight citing specific detail from the brief, or null>",
+  "mechanism_novelty": "<one sentence naming a mechanism unique to this cell, or null>",
   "recommendation": "<if this option wins, the first implementation step is...>",
   "verdict": "<one sentence: pursue or not, and why>"
 }
 
 Scoring guide:
 - 5 = ideal, 4 = good, 3 = adequate, 2 = concerning, 1 = showstopper
-- Risk is inverted: 5 = lowest risk, 1 = highest risk (higher is always better)
 - Score 3 only when genuinely neutral. If all scores cluster around 3, your output is worthless — differentiate.
+- `risk_direction_used` MUST be the string `"higher_safer"`. If you find yourself wanting to write `"lower_safer"`, stop and re-read the convention table — you are about to produce an outlier.
 - Return ONLY the JSON. No prose, no fences.
 ```
 
@@ -220,6 +238,8 @@ Scoring guide:
 - `description`: `"Idea #N — [3-word theme]"` — 3 words capturing the core bet of this cell (e.g., `"Idea #4 — strict then weighted"`, `"Idea #8 — keep-rate adaptive"`). This is what appears in the agent panel UI — match the intention-first style of the TodoWrite labels.
 - Model: `haiku`
 - Tools: none (agents reason about pre-digested context only)
+
+**Tool contamination guard:** after dispatch, inspect each agent's `usage.tool_uses` field. If any cell shows `tool_uses > 0`, the agent browsed the codebase instead of reasoning from the pre-digested brief — results are contaminated with asymmetric information. Re-dispatch that cell with an even stricter no-tools preamble. Empirical evidence (2026-04-15 RUN A cell 5): one cell using 25 tool calls produced a composite that differed by −2.0 from tool-blocked replications of the same prompt.
 
 **Cells 8 and 9 use differentiated prompts.** When the user provided exactly 3 base options, append this to the cell 8 and 9 prompts instead of the generic Instructions block:
 
@@ -603,7 +623,9 @@ TodoWrite([
 
 # 8. Write Telemetry
 
-Non-fatal — if any individual file write fails, skip that file and continue with the remaining writes. Telemetry MUST NOT block the matrix output or raise errors to the user.
+Persistence is the audit trail — without it there is no post-mortem, no cross-matrix pattern analysis, no null-model calibration. Telemetry writes are non-fatal (a single failed file skips to the next), but the full absence of the `~/.autoimprove/matrix-runs/<RUN_ID>/` directory is a process failure.
+
+**Inline dispatchers (running the matrix via ad-hoc Agent calls instead of this skill) MUST also write here.** Empirical evidence (2026-04-15): agent:magi ran 4 matrices inline with zero persistence; post-hoc reconstruction required dumping from session scroll and was lossy. Every inline dispatcher should close with the same telemetry block below.
 
 **Generate RUN_ID:** `YYYYMMDD-HHMMSS-<problem-slug>` where the problem slug is the `PROBLEM` string lowercased, non-alphanumeric characters replaced with `-`, truncated to 40 characters, and trailing `-` stripped.
 
