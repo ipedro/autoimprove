@@ -431,6 +431,7 @@ Any change post-execution-start requires:
 **Justification:** v10 (commit e86205c) introduced the 16-winner-bearing floor in §1/§7 but left a stale v9-era paragraph in §3.1 that described Haiku H2 as drop-and-aggregate without the floor. An analyst following §3.1 alone could derive a different H2 pass/fail than one following §1/§7. This is execution-significant ambiguity.
 **Resolution:** §3.1 paragraph synchronized with §1/§7 (commit d58a2e9). Metadata bumped to v10.1 (commit 4f888ce). Reclassified from wording-only to protocol amendment (commit ddca208).
 **Hypotheses affected:** H2. No threshold changed; no new test introduced. The operative rule in §1/§7 was already correct — the amendment resolved the stale §3.1 description to match it.
+**Precedence ruling:** in any version of this protocol, §1 (hypothesis definitions) is the authoritative source for pass/fail rules. §7 (analysis) must mirror §1 verbatim. §3.1 (enforcement) is explanatory and procedural — when §3.1 conflicts with §1, §1 controls. This precedence applied retroactively to v10 and all prior versions: any H2 analysis tooling, dry-runs, or scoring logic derived from §3.1's stale wording rather than §1 is void and must be discarded or rerun under v10.1. As of v10.1 no execution has begun, so no such artifacts exist.
 
 ---
 
