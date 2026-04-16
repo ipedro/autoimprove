@@ -1,14 +1,15 @@
 # Null-Model Validation of Idea-Matrix — Preregistered Protocol
 
-**Version:** 4.0 (2026-04-16)
+**Version:** 5.0 (2026-04-16)
 **Status:** awaiting execution (budget-gated to post-reset)
-**Budget estimate:** ~$7, 3-5h
+**Budget estimate:** ~$8-9, 3-5h
 **Previous versions:**
-- v1 (commit c6245ad) — rejected in Codex round-3 for inconsistent thresholds, arbitrary 9/12, D0 unintegrated, non-MEE categories, lexical-only bans, correlated judges, post-hoc analysis, escape-hatch aborts.
-- v2 (commit c9ffd33) — addressed Codex round-3 but written BEFORE autoimprove#105.
-- v3 (commit 25b35e4) — addressed #105 (schema enforcement, env blocks). Codex round-4 then identified three execution-blocking issues: (a) lexical gate scanned the full prompt, but pre-registered env blocks contained banned tokens by design (D1 "cache infrastructure", D0 "rollback") — gate would always fail; (b) schema validator only checked key-set, not score types/bounds/composite/grounding — corrupt outputs counted as `ok`; (c) H2 single-cell reruns lacked drop semantics, leaving free choice at analysis time.
+- v1 (commit c6245ad) — rejected in Codex round-3.
+- v2 (commit c9ffd33) — addressed round-3 but predated autoimprove#105.
+- v3 (commit 25b35e4) — addressed #105; rejected in round-4.
+- v4 (commit 478e861) — addressed round-4. Codex round-5 identified three more execution-blocking issues: (a) H2 ran only the Haiku modal-winner cell against Sonnet/Opus, so the test could not actually measure "same winner across models" — Sonnet might rank one of the 7 untested cells higher; (b) H6 conformance formula `ok / (total − dropped)` excluded drops from the denominator, masking widespread failure; (c) main 9-cell reruns with exactly 1 dropped cell survived without specified semantics, leaving post-hoc analyst discretion.
 
-v4 addresses all three. Changes summarized in §11.
+v5 addresses all three. Changes summarized in §11.
 
 **Motivation:** Codex round-2 adversarial review identified "absence of null model" as the single strongest objection to the 11 lessons from 2026-04-15 matrix experiments. Issue #105 added two more: scoring discipline cannot be enforced by prompt alone; evaluation without codebase infrastructure context produces false dealbreakers. A validation protocol that ignores either is itself invalid.
 
@@ -25,9 +26,10 @@ Each hypothesis has (a) a single pre-committed statistical test, (b) a single pr
 - **Threshold:** ≥14/20 in the target category for ≥2 of 3 real domains (D1, D2, D3).
 - **Prerequisite:** schema-conformance rate (§3.1) ≥ 80% for that domain. Below that, H1 is declared FAILED for the domain (not dropped — prompt-only discipline is itself what L5a would rely on in practice).
 
-**H2 (inter-model independence):** Sonnet and Opus identify the same winning cell as Haiku under the same blind neutral prompt.
-- **Test:** for each real domain, dispatch 5 Sonnet and 5 Opus reruns of the Haiku modal winner cell. Count reruns with composite ≥ Haiku-modal-winner mean.
-- **Threshold:** Sonnet ≥3/5 AND Opus ≥3/5 for ≥2 of 3 real domains.
+**H2 (inter-model winner-identity agreement):** Sonnet and Opus identify the same winning *cell* as Haiku under the same blind neutral prompt.
+- **Test:** for each real domain, dispatch a full 9-cell grid for Sonnet (×3 reruns) and for Opus (×3 reruns). For each model, take the modal winner cell across its 3 reruns. Compare to the Haiku modal winner cell.
+- **Threshold:** Sonnet modal winner == Haiku modal winner AND Opus modal winner == Haiku modal winner, for ≥2 of 3 real domains.
+- **v5 honesty note:** v3-v4 used a single-cell rerun design that could not actually test winner identity (Sonnet might rank one of the 7 untested cells higher). v5 runs the full grid. Cost: +~$1.50 for the extra 6 × 9 = 54 Sonnet+Opus dispatches per domain × 3 domains = 162 dispatches.
 
 **H3 (mechanism category is not uniform):** Empirical distribution of blind-classified winning categories is not consistent with uniform 1/4 draw.
 - **Test:** exact binomial (scipy.stats.binomtest) on target-category frequency vs p₀=0.25, one test per real domain.
@@ -295,12 +297,18 @@ def validate(cell_output, env_block_text, banned_tokens):
 
 `_cites_unlisted_infra` is a small Pedro-coded heuristic: extracts noun phrases from the dealbreaker text using a 30-line regex helper, checks each against the environment block text. If any noun phrase names infrastructure (heuristic: ends in `daemon`, `service`, `queue`, `cluster`, `database`, `pipeline`, `mesh`, `cache`, `replica`, etc.) and is NOT in the environment block, the gate fails. The helper code is committed before execution and frozen.
 
-**Enforcement:**
-- Any of the 7 gates fails → re-dispatch that cell ONCE with a stricter preamble that names the specific failure mode ("Your previous response added dimensions beyond the required four", "score X was string not integer", "dealbreaker cited Z which is not in the environment block", etc.).
+**Enforcement (v5 — single rule for partial drops):**
+- Any of the 7 gates fails → re-dispatch that cell ONCE with a stricter preamble that names the specific failure mode.
 - Second failure → mark that cell as `dropped` for the rerun.
-- **Multi-cell reruns (D0/D1/D2/D3 main runs):** any rerun with ≥2 dropped cells → mark the entire rerun as `dropped`.
-- **Single-cell reruns (H2 Sonnet/Opus):** a `dropped` outcome counts as **0 toward the ≥3/5 threshold** (i.e., a miss in the fixed-5 denominator). The denominator stays at 5; missing composites are NOT retried indefinitely and NOT excluded.
-- Track `schema_conformance_rate = ok_cells / (total_cells - dropped_cells_after_one_retry)` per domain. (Dropped cells DO count against conformance.)
+- **Any rerun with ≥1 dropped cell is invalidated** — the entire rerun is discarded (cells not used in winner counting). This is a hard rule that removes post-hoc discretion about how to score 8-of-9 grids.
+- Invalidated reruns count as **9 dropped cells** toward the H6 conformance denominator (see formula below).
+- **H2 grids (Sonnet/Opus 9-cell):** same rule — any drop invalidates the whole 3-rerun grid for that model on that domain. Invalidated grid counts as failure to identify a winner; H2 for that domain auto-fails.
+
+**Conformance formula (v5 — denominator is fixed):**
+```
+schema_conformance_rate = ok_cells / total_dispatched_cells
+```
+Where `total_dispatched_cells = 9 cells × 20 reruns = 180` per domain (regardless of how many were retried, dropped, or invalidated). A cell that fails twice and is dropped counts as 0 ok-cells. An invalidated rerun's 9 cells all count as 0 ok-cells, even if some were individually `ok` — because the analysis-level rule discards them. This eliminates the v4 bug where excluding drops from the denominator could mask widespread failure.
 
 **H6 consumes this rate.** H1 and H3 are conditional on `schema_conformance_rate ≥ 80%` per domain.
 
@@ -309,20 +317,20 @@ def validate(cell_output, env_block_text, banned_tokens):
 ## 4. Execution Plan
 
 **Per domain × 4 domains:**
-- 20 Haiku reruns, `allowed-tools: []`.
+- 20 Haiku reruns × 9 cells, `allowed-tools: []`.
 
-**Plus for H2 only (D1, D2, D3):**
-- 5 Sonnet reruns of Haiku modal winner cell.
-- 5 Opus reruns of same cell.
+**Plus for H2 (D1, D2, D3 — v5 full grid):**
+- 3 Sonnet reruns × 9 cells per domain.
+- 3 Opus reruns × 9 cells per domain.
 
 **Total dispatches:**
 - 4 × 20 × 9 = 720 Haiku cell dispatches.
-- 3 × 2 × 5 = 30 Sonnet+Opus cell dispatches.
-- Schema re-dispatches: estimated 15-25% failure rate → ~120 extra dispatches.
+- 3 × 2 × 3 × 9 = 162 Sonnet+Opus cell dispatches.
+- Schema re-dispatches: estimated 15-25% failure rate → ~150 extra dispatches.
 - Blind-coding judges (§5): 12 dispatches.
-- **Grand total: ~880 dispatches.**
+- **Grand total: ~1,044 dispatches.**
 
-**Budget:** Haiku ~$1.80, Sonnet+Opus ~$0.60, coding ~$0.30, re-dispatches ~$0.30. Total ~$3.00. Add 2× buffer: **$6-7**.
+**Budget:** Haiku ~$2.00, Sonnet+Opus ~$3.20, coding ~$0.30, re-dispatches ~$0.50. Total ~$6.00. Add 1.5× buffer: **$8-9**.
 
 **Wall clock:** ~2h with parallelism (9 cells parallel, 20 reruns per domain, 4 domains).
 
@@ -356,7 +364,7 @@ Exact decision rules:
 
 - **H1:** for each of D1, D2, D3 where H6 passed, compute `target_count = count(rerun where blind_classified_category == pre_registered_target)`. Pass H1 if `target_count ≥ 14` for at least 2 of 3 domains.
 
-- **H2:** for each of D1, D2, D3, identify Haiku modal winner cell. For each of Sonnet and Opus, dispatch 5 reruns of that single cell. Count reruns with composite (recomputed per §3.1 Gate 5) ≥ Haiku modal-winner mean. Twice-failed reruns count as 0 (per §3.1 single-cell drop rule). Denominator is fixed at 5. Pass if both counts ≥ 3/5 for at least 2 of 3 domains.
+- **H2:** for each of D1, D2, D3, identify Haiku modal winner cell across the 20 Haiku reruns (after H6 conformance check). Run a full 9-cell grid for Sonnet (3 reruns) and Opus (3 reruns) on the same domain prompt. For each of Sonnet and Opus, identify the modal winner cell across its 3 grids. Pass H2 if Sonnet-modal-winner == Haiku-modal-winner AND Opus-modal-winner == Haiku-modal-winner, for at least 2 of 3 real domains. Any invalidated grid (per §3.1) auto-fails H2 for that domain.
 
 - **H3:** for each of D1, D2, D3 where H6 passed, run `scipy.stats.binomtest(target_count, 20, 0.25, alternative='greater')`. Pass if p < 0.0125 for at least 2 of 3 domains.
 
@@ -411,7 +419,17 @@ On abort, write `docs/null-model-validation-abort.md`: trigger, partial data, wh
 
 ## 11. Changelog
 
-### v3 → v4 (this version)
+### v4 → v5 (this version)
+
+Addresses Codex round-5 review of v4:
+
+| # | v4 flaw | v5 fix |
+|---|---------|--------|
+| 14 | H2 ran only Haiku modal-winner cell against Sonnet/Opus. Could not measure cross-model winner identity — Sonnet might rank an untested cell higher. False-positive structurally. | §1 H2 redesigned: full 9-cell grid for Sonnet (×3 reruns) and Opus (×3 reruns) per domain. Compare each model's modal winner against Haiku's. Cost +~$1.50; total budget $8-9. |
+| 15 | H6 conformance formula `ok / (total − dropped)` excluded dropped cells from the denominator, so widespread failure could report high conformance among survivors. | §3.1 formula changed to fixed denominator: `ok_cells / total_dispatched_cells` (180 per domain). Drops, retries, and invalidated reruns all count against. |
+| 16 | Main 9-cell rerun with exactly 1 dropped cell survived with no analyst-time semantics. Same partial-failure ambiguity v4 fixed for H2 single-cell. | §3.1 single rule: ANY drop invalidates the entire rerun (counts as 9 dropped cells toward H6). Removes post-hoc discretion about scoring 8-of-9 grids. Same rule applied to H2 grids. |
+
+### v3 → v4 (commit 478e861)
 
 Addresses Codex round-4 review of v3:
 
