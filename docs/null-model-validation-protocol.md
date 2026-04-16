@@ -460,22 +460,24 @@ On abort, write `docs/null-model-validation-abort.md`: trigger, partial data, wh
 
 ## 11. Changelog
 
-### v10 → v10.1 (this version, wording-only consistency sweep)
+### v10 → v10.1 (this version, protocol amendment — resolves execution-significant ambiguity)
 
-Codex round-11 noted that §3.1 still carried a v9-era Haiku H2 paragraph ("drop-and-aggregate, fail only if remaining list is empty or has no unique mode") that contradicted the v10 rule (16-winner-bearing floor matching H6/H7 80%) introduced in §1 and §7. This was a wording bug, not a rule change — the v10 §1/§7 procedure was already authoritative.
+Codex round-11 found that v10 introduced the 16-winner-bearing Haiku floor in §1 and §7 but left a stale v9-era paragraph in §3.1 describing Haiku H2 as "drop-and-aggregate, fail only if remaining list is empty or has no unique mode". The §1/§7 rule and the §3.1 description could produce different H2 pass/fail outcomes on the same Haiku data. This is an execution-significant ambiguity, not a non-semantic cleanup.
 
-| # | v10 wording bug | v10.1 fix |
-|---|-----------------|-----------|
-| 27 | §3.1 still described Haiku H2 as drop-and-aggregate without the 16-winner floor. Same Haiku data could be scored two ways. | §3.1 paragraph rewritten to state the 16-winner-bearing floor (matching H6/H7 ≥80%) explicitly; relabeled as v10. No semantic change to the operative rule — §1 and §7 already had the correct rule. v10.1 is a consistency cleanup, not a protocol amendment. |
+v10.1 synchronizes §3.1 with the §1/§7 rule (16-winner-bearing floor) and is classified as a **protocol amendment** per §8 rules. The operative rule (§1/§7) was already correct in v10 — §3.1 was stale. No hypothesis threshold changed; no new test was introduced. The amendment's only effect is removing the stale path that allowed dual-scoring of Haiku H2 data.
+
+| # | v10 ambiguity | v10.1 amendment |
+|---|---------------|-----------------|
+| 27 | §3.1 carried stale v9 Haiku H2 description (no 16-winner floor) while §1/§7 had the v10 rule. An analyst reading only §3.1 could derive different H2 outcomes than one reading §1/§7. | §3.1 rewritten to match §1/§7 exactly (16-winner-bearing floor, 80% threshold). Commit: `d58a2e9` (§3.1 fix), `4f888ce` (this metadata bump). |
 
 ### v9 → v10 (commit e86205c)
 
-Addresses Codex round-10 review of v9:
+Addresses Codex round-10 review of v9. v10 introduced the 16-winner-bearing Haiku floor in §1 and §7 but inadvertently left §3.1 carrying stale v9 wording — that residual ambiguity was fixed in v10.1 above.
 
 | # | v9 flaw | v10 fix |
 |---|---------|---------|
-| 25 | Haiku H2 had no representativeness floor. After dropping invalid and tied "no winner" reruns, a domain could pass H2 with a single winner-bearing Haiku rerun (trivially unique mode). Same false-positive class round-9 closed for Sonnet/Opus, just on Haiku side. | §1 H2 introduces 16/20 winner-bearing floor for Haiku (matching H6/H7's 80% threshold). Below floor → H2 auto-fails on Haiku side. Symmetric with the Sonnet/Opus strict 3-grid rule. |
-| 26 | §3.1 still contained the v8 paragraph "invalidated reruns count as non-target / fail-domain in those tests" that conflated H1 and H2 handling and conflicted with the new Haiku drop-and-aggregate. | §3.1 invalidation paragraph rewritten as the single authoritative source. Per-hypothesis bullets explicitly differentiate H1 (drop, denominator fixed at 20, count as non-target), H2 Haiku (16-winner floor, drop-and-aggregate), H2 Sonnet/Opus (strict 3-grid), H3 (inherits from H1). No more generic "fail-domain" wording. |
+| 25 | Haiku H2 had no representativeness floor. After dropping invalid and tied "no winner" reruns, a domain could pass H2 with a single winner-bearing Haiku rerun (trivially unique mode). Same false-positive class round-9 closed for Sonnet/Opus, just on Haiku side. | §1 H2 introduces 16/20 winner-bearing floor for Haiku (matching H6/H7's 80% threshold). Below floor → H2 auto-fails on Haiku side. |
+| 26 | §3.1 still contained the v8 paragraph "invalidated reruns count as non-target / fail-domain in those tests" that conflated H1 and H2 handling and conflicted with the new Haiku drop-and-aggregate. | §3.1 invalidation paragraph rewritten as the single authoritative source. Per-hypothesis bullets explicitly differentiate H1 (drop, denominator fixed at 20, count as non-target), H2 Haiku (16-winner floor, drop-and-aggregate), H2 Sonnet/Opus (strict 3-grid), H3 (inherits from H1). **Note:** v10 §3.1 was incomplete — the stale H2 note survived and was corrected in v10.1 above. |
 
 ### v8 → v9 (commit 2c326ad)
 
