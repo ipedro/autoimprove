@@ -341,7 +341,7 @@ H7_rate = valid_reruns       / total_reruns             # rerun-level perspectiv
 
 The two metrics measure different constructs: H6 = "do individual cells obey the schema?", H7 = "are full reruns useful as analysis units?". They can disagree, and that disagreement is informative — it's why both gate H1/H2/H3.
 
-**H2 specific note (v9 — aligned with §1/§7):** Sonnet and Opus 3-grids are subject to a strict sample-size floor: any invalidated rerun OR any rerun with no winner (per the §1 tie rule) makes the entire 3-grid unusable, and H2 auto-fails for that model on that domain. Haiku's 20-rerun grid uses drop-and-aggregate (drop invalidated reruns, drop no-winner reruns from the modal computation, fail only if the remaining list is empty or has no unique mode). The asymmetry is intentional and matches §1/§7 verbatim.
+**H2 specific note (v10 — aligned with §1/§7):** Sonnet and Opus 3-grids are subject to a strict sample-size floor: any invalidated rerun OR any rerun with no winner (per the §1 tie rule) makes the entire 3-grid unusable, and H2 auto-fails for that model on that domain. Haiku's 20-rerun grid uses a 16-winner-bearing floor (matching H6/H7 ≥80%): if fewer than 16 reruns are valid AND have a rerun-level winner, H2 auto-fails on the Haiku side; otherwise the modal winner is computed across those ≥16 winner-bearing reruns and H2 fails only if no unique mode exists. The asymmetry between Sonnet/Opus (n=3 strict) and Haiku (n=20 with 80% representativeness floor) is justified by sample size and matches §1/§7 verbatim.
 
 ---
 
