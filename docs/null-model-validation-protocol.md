@@ -1,13 +1,13 @@
 # Null-Model Validation of Idea-Matrix — Preregistered Protocol
 
-**Version:** 7.0 (2026-04-16)
+**Version:** 8.0 (2026-04-16)
 **Status:** awaiting execution (budget-gated to post-reset)
 **Budget estimate:** ~$8-9, 3-5h
 **Previous versions:**
-- v1-v5 (commits c6245ad, c9ffd33, 25b35e4, 478e861, 41b5035) — see §11 for round-by-round history.
-- v6 (commit af6fd4a) — addressed round-6. Codex round-7 then identified two high-severity issues: (a) H2 lacked rerun-level tie semantics (a single rerun with two cells at top composite had no defined winner — could change modal aggregation); (b) §3.1 contained mutually contradictory H6 accounting (the v5 "invalidated rerun = 9 dropped cells" sentence remained alongside v6's "invalidation does not subtract" rule, allowing implementer to derive different gate outcomes from same data).
+- v1-v6 (commits c6245ad, c9ffd33, 25b35e4, 478e861, 41b5035, af6fd4a) — see §11.
+- v7 (commit c9285d8) — addressed round-7. Codex round-8 then identified one remaining high-severity issue: §7 (Analysis) H2 was paraphrased rather than mirrored verbatim from §1. Same dataset could be scored two different ways depending on which section the analyst followed.
 
-v7 addresses both. Changes summarized in §11.
+v8 addresses it by collapsing H2 into a single literal procedure shared between §1 and §7. Changes summarized in §11.
 
 **Motivation:** Codex round-2 adversarial review identified "absence of null model" as the single strongest objection to the 11 lessons from 2026-04-15 matrix experiments. Issue #105 added two more: scoring discipline cannot be enforced by prompt alone; evaluation without codebase infrastructure context produces false dealbreakers. A validation protocol that ignores either is itself invalid.
 
@@ -28,9 +28,13 @@ Each hypothesis has (a) a single pre-committed statistical test, (b) a single pr
 **H2 (inter-model winner-identity agreement):** Sonnet and Opus identify the same winning *cell* as Haiku under the same blind neutral prompt.
 - **Prerequisite:** H6 AND H7 pass for the domain (composites must be comparable). If either fails for a domain, H2 is auto-FAILED for that domain (not skipped, not analyzed).
 - **Rerun-level winner extraction:** same as H1 above — highest composite, ties within 0.001 = no winner for that rerun.
-- **Test:** for each real domain where the prerequisite holds, dispatch a full 9-cell grid for Sonnet (×3 reruns) and for Opus (×3 reruns). For each model: extract the rerun-level winner of each valid rerun (using the rule above; ties make that rerun contribute no winner). Then identify the **unique** modal winner cell across that model's 3 valid reruns. **Ties at the modal level (no unique mode), or any rerun with no winner, count as H2 failure for that model on that domain** — no analyst tiebreak.
-- **Threshold:** Sonnet unique modal winner == Haiku unique modal winner AND Opus unique modal winner == Haiku unique modal winner, for ≥2 of 3 real domains.
-- **v5/v6/v7 honesty note:** v3-v4 used single-cell design unable to test winner identity. v5 ran full grid. v6 added modal-aggregate tie semantics. v7 adds explicit rerun-level tie semantics (round-7 fix) so winner extraction has no analyst discretion at any level.
+- **Test (mirrored verbatim in §7):**
+  1. For each model (Haiku, Sonnet, Opus), take only the **valid reruns** (per §3.1 invalidation rule).
+  2. Among valid reruns, build the list of rerun-level winners (excluding "no winner" reruns — they are absent, neither contributing to nor failing the modal computation by themselves).
+  3. Identify the **unique modal winner cell** across that list. If the list is empty OR there is no unique mode, H2 auto-fails for that model on that domain.
+  4. Pass H2 for the domain if all three models yielded a unique modal winner AND Sonnet-modal == Haiku-modal AND Opus-modal == Haiku-modal.
+- **Threshold:** pass for ≥2 of 3 real domains.
+- **v5/v6/v7/v8 honesty note:** v3-v4 used single-cell design unable to test winner identity. v5 ran full grid. v6 added modal-aggregate tie semantics. v7 added rerun-level tie semantics. v8 (this version) makes the §7 mirror verbatim — earlier versions had §7 paraphrasing the rule, leaving scoring discretion. Now §1 and §7 use literally the same procedure.
 
 **H3 (mechanism category is not uniform):** Empirical distribution of blind-classified winning categories is not consistent with uniform 1/4 draw.
 - **Test:** exact binomial (scipy.stats.binomtest) on target-category frequency vs p₀=0.25, one test per real domain.
@@ -388,7 +392,15 @@ Exact decision rules:
 
 - **H1:** for each of D1, D2, D3 where both H6 and H7 passed, identify each valid rerun's winner cell (highest composite; ties = non-target). Compute `target_count = count(valid reruns where winner's blind-classified category == target)`. Denominator is always 20 (invalidated reruns count as non-target). Pass H1 if `target_count ≥ 14` for at least 2 of 3 domains.
 
-- **H2:** for each of D1, D2, D3 where both H6 and H7 passed, identify the **unique** Haiku modal winner cell across the 20 reruns (ties = H2 fail for domain). Run full 9-cell grid for Sonnet (3 reruns) and Opus (3 reruns). Identify each model's unique modal winner cell across its 3 valid grids (ties or invalidations = H2 fail for that model on that domain). Pass H2 if Sonnet-unique-modal == Haiku-unique-modal AND Opus-unique-modal == Haiku-unique-modal, for at least 2 of 3 domains.
+- **H2:** for each of D1, D2, D3 where both H6 and H7 passed, apply the unified winner extraction from §1 (rerun-level winner = highest composite; ≥2 cells within 0.001 of top = no winner for that rerun) to all reruns of all three models on this domain. Then for each model:
+  1. Take only the **valid reruns** (per §3.1 invalidation rule).
+  2. Among valid reruns, build the list of rerun-level winners (excluding "no winner" reruns from this list — they neither contribute to nor fail the model's modal computation by themselves; they are simply absent).
+  3. Identify the **unique modal winner cell** across that list. If the list is empty (all valid reruns were tied "no winner") OR if there is no unique mode (multiple cells tied at the top frequency), H2 auto-fails for that model on that domain.
+  4. Apply the same procedure to Haiku (using its 20 reruns), Sonnet (3 reruns), and Opus (3 reruns).
+- Pass H2 for the domain if Haiku, Sonnet, and Opus all yielded a unique modal winner AND Sonnet's modal == Haiku's modal AND Opus's modal == Haiku's modal.
+- **H2 final pass:** Pass for ≥2 of 3 real domains.
+
+This is the single rule shared between §1 and §7. No alternative interpretation exists.
 
 - **H3:** for each of D1, D2, D3 where both H6 and H7 passed, run `scipy.stats.binomtest(target_count, 20, 0.25, alternative='greater')` using the same `target_count` from H1. Pass if p < 0.0125 for at least 2 of 3 domains.
 
@@ -443,7 +455,15 @@ On abort, write `docs/null-model-validation-abort.md`: trigger, partial data, wh
 
 ## 11. Changelog
 
-### v6 → v7 (this version)
+### v7 → v8 (this version)
+
+Addresses Codex round-8 review of v7:
+
+| # | v7 flaw | v8 fix |
+|---|---------|--------|
+| 22 | §7 H2 paraphrased the §1 H2 rule instead of mirroring it verbatim. The two sections could be read as scoring the same dataset two different ways: §1 made tied/invalidated reruns H2-fatal at the rerun level; §7 still talked about computing a Haiku modal winner across "the 20 reruns" without specifying tie/invalidation handling at the rerun level. Real preregistration requires a single procedure. | §1 H2 and §7 H2 now contain the **same numbered 4-step procedure**. Both sections explicitly describe: (1) take valid reruns only, (2) extract rerun-level winners (ties = no winner for that rerun, contributes nothing), (3) require unique modal winner across that list, (4) compare Sonnet/Opus modals to Haiku modal. Empty winner list or non-unique mode = H2 fail for the model on the domain. No paraphrase remains; the procedure is literally identical in both sections. |
+
+### v6 → v7 (commit c9285d8)
 
 Addresses Codex round-7 review of v6:
 
