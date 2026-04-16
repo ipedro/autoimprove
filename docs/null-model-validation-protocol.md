@@ -1,13 +1,14 @@
 # Null-Model Validation of Idea-Matrix — Preregistered Protocol
 
-**Version:** 3.0 (2026-04-16)
+**Version:** 4.0 (2026-04-16)
 **Status:** awaiting execution (budget-gated to post-reset)
 **Budget estimate:** ~$7, 3-5h
 **Previous versions:**
-- v1 (2026-04-16 morning, commit c6245ad) — rejected in Codex round-3 for inconsistent thresholds, arbitrary 9/12, D0 unintegrated, non-MEE categories, lexical-only bans, correlated judges, post-hoc analysis, escape-hatch aborts.
-- v2 (2026-04-16 afternoon, commit c9ffd33) — addressed Codex round-3 but written BEFORE autoimprove#105 surfaced. v2 assumed prompt-only scoring discipline worked. Empirical evidence from MATRIX_5 (MAGI postbox hook, 2026-04-16) showed it does NOT: 4 of 9 cells invented new dimensions (5, 6, or 7 dimensions instead of the prescribed 4), producing non-comparable composites even with `risk_direction` explicit.
+- v1 (commit c6245ad) — rejected in Codex round-3 for inconsistent thresholds, arbitrary 9/12, D0 unintegrated, non-MEE categories, lexical-only bans, correlated judges, post-hoc analysis, escape-hatch aborts.
+- v2 (commit c9ffd33) — addressed Codex round-3 but written BEFORE autoimprove#105.
+- v3 (commit 25b35e4) — addressed #105 (schema enforcement, env blocks). Codex round-4 then identified three execution-blocking issues: (a) lexical gate scanned the full prompt, but pre-registered env blocks contained banned tokens by design (D1 "cache infrastructure", D0 "rollback") — gate would always fail; (b) schema validator only checked key-set, not score types/bounds/composite/grounding — corrupt outputs counted as `ok`; (c) H2 single-cell reruns lacked drop semantics, leaving free choice at analysis time.
 
-v3 addresses the two gaps issue #105 exposed: prompt-only schema discipline fails empirically (L7-hard), and neutral prompts without infrastructure context produce hallucinated dealbreakers (L8). Changes summarized in §11.
+v4 addresses all three. Changes summarized in §11.
 
 **Motivation:** Codex round-2 adversarial review identified "absence of null model" as the single strongest objection to the 11 lessons from 2026-04-15 matrix experiments. Issue #105 added two more: scoring discipline cannot be enforced by prompt alone; evaluation without codebase infrastructure context produces false dealbreakers. A validation protocol that ignores either is itself invalid.
 
@@ -177,9 +178,11 @@ No users report time-of-day preferences.
 
 Each cell prompt is constructed from a template with two neutrality gates and one schema gate:
 
-**Lexical gate (automated):** regex scan for banned tokens. Hit = rebuild.
+**Lexical gate (automated):** regex scan **the model's output text**, NOT the prompt. The prompt's pre-registered environment block (§2.2) may contain neutral mentions of vocabulary that overlaps the banned-token list (e.g., D1's environment notes "no existing cache infrastructure" while `cache` is banned in model output). This is intentional — the goal is to prevent the model from re-introducing banned terms in `mechanism_novelty` and `dealbreaker`, not to censor the deployment context. Output hit = re-dispatch (per §3.1 schema procedure).
+
 **Conceptual gate (human):** Pedro reads the ~12 unique prompt bodies (cells share prefixes) and rejects on paraphrased leakage. ~5 min per domain.
-**Schema gate (automated, new in v3):** after dispatch, each cell output is JSON-parsed and validated for exact 4-dimension schema (§3.1).
+
+**Schema gate (automated, new in v3):** after dispatch, each cell output is JSON-parsed and validated for exact 4-dimension schema, score type/bounds, composite integrity, and dealbreaker grounding (§3.1).
 
 **Cell template (Haiku):**
 ```
@@ -237,33 +240,69 @@ observability_gain, operational_complexity, security_surface, safety,
 hook_coverage, or any other dimension. Four dimensions. Named exactly as above.
 ```
 
-### 3.1 Schema Validation (NEW in v3, responding to issue #105)
+### 3.1 Schema Validation (NEW in v3, hardened in v4 per Codex round-4)
 
-After each rerun batch, every cell output is validated:
+After each rerun batch, every cell output is validated against five gates:
 
 ```python
+import json, re
+
 REQUIRED = {"feasibility", "risk", "synergy_potential", "implementation_cost"}
 
-def validate(cell_output):
+def validate(cell_output, env_block_text, banned_tokens):
+    # Gate 1: parses
     try:
         obj = json.loads(cell_output)
-        scores = obj.get("scores", {})
-        if set(scores.keys()) != REQUIRED:
-            return "schema_fail"
-        if obj.get("risk_direction_used") != "higher_safer":
-            return "convention_fail"
-        return "ok"
     except json.JSONDecodeError:
         return "parse_fail"
+
+    # Gate 2: exact 4-key schema
+    scores = obj.get("scores", {})
+    if set(scores.keys()) != REQUIRED:
+        return "schema_fail"
+
+    # Gate 3: convention declared
+    if obj.get("risk_direction_used") != "higher_safer":
+        return "convention_fail"
+
+    # Gate 4: scores are integers in [1, 10]
+    for k, v in scores.items():
+        if not isinstance(v, int) or not (1 <= v <= 10):
+            return "score_type_fail"
+
+    # Gate 5: composite is recomputed (model-reported value is discarded)
+    obj["composite"] = sum(scores.values()) / 4.0
+
+    # Gate 6: lexical scan only on model-generated text fields
+    output_text = " ".join([
+        obj.get("mechanism_novelty", "") or "",
+        obj.get("dealbreaker", "") or "",
+    ]).lower()
+    for token in banned_tokens:
+        if re.search(rf"\b{re.escape(token.lower())}\b", output_text):
+            return "banned_token_fail"
+
+    # Gate 7: dealbreaker grounding — if dealbreaker exists and cites
+    # infrastructure, the cited infrastructure must appear in the environment
+    # block. Heuristic: dealbreaker contains a noun matching some env-block
+    # noun, OR the dealbreaker is a generic concern (no infra noun).
+    db = (obj.get("dealbreaker") or "").lower()
+    if db and _cites_unlisted_infra(db, env_block_text):
+        return "infra_grounding_fail"
+
+    return "ok"
 ```
 
-**Enforcement:**
-- `schema_fail`, `convention_fail`, or `parse_fail` → re-dispatch that cell ONCE with an even stricter preamble ("Your previous response added dimensions beyond the required four. Use EXACTLY these keys: feasibility, risk, synergy_potential, implementation_cost. No others.").
-- Second failure → mark that cell as `dropped` for the rerun.
-- Any rerun with ≥2 dropped cells → mark the entire rerun as `dropped`.
-- Track `schema_conformance_rate = ok_cells / total_cells` per domain.
+`_cites_unlisted_infra` is a small Pedro-coded heuristic: extracts noun phrases from the dealbreaker text using a 30-line regex helper, checks each against the environment block text. If any noun phrase names infrastructure (heuristic: ends in `daemon`, `service`, `queue`, `cluster`, `database`, `pipeline`, `mesh`, `cache`, `replica`, etc.) and is NOT in the environment block, the gate fails. The helper code is committed before execution and frozen.
 
-**H6 consumes this rate.** H1 and H3 are conditional on schema_conformance_rate ≥ 80% per domain.
+**Enforcement:**
+- Any of the 7 gates fails → re-dispatch that cell ONCE with a stricter preamble that names the specific failure mode ("Your previous response added dimensions beyond the required four", "score X was string not integer", "dealbreaker cited Z which is not in the environment block", etc.).
+- Second failure → mark that cell as `dropped` for the rerun.
+- **Multi-cell reruns (D0/D1/D2/D3 main runs):** any rerun with ≥2 dropped cells → mark the entire rerun as `dropped`.
+- **Single-cell reruns (H2 Sonnet/Opus):** a `dropped` outcome counts as **0 toward the ≥3/5 threshold** (i.e., a miss in the fixed-5 denominator). The denominator stays at 5; missing composites are NOT retried indefinitely and NOT excluded.
+- Track `schema_conformance_rate = ok_cells / (total_cells - dropped_cells_after_one_retry)` per domain. (Dropped cells DO count against conformance.)
+
+**H6 consumes this rate.** H1 and H3 are conditional on `schema_conformance_rate ≥ 80%` per domain.
 
 ---
 
@@ -317,7 +356,7 @@ Exact decision rules:
 
 - **H1:** for each of D1, D2, D3 where H6 passed, compute `target_count = count(rerun where blind_classified_category == pre_registered_target)`. Pass H1 if `target_count ≥ 14` for at least 2 of 3 domains.
 
-- **H2:** for each of D1, D2, D3, identify Haiku modal winner cell. For each of Sonnet and Opus, count reruns with composite ≥ Haiku-mean. Pass if both counts ≥ 3/5 for at least 2 of 3 domains.
+- **H2:** for each of D1, D2, D3, identify Haiku modal winner cell. For each of Sonnet and Opus, dispatch 5 reruns of that single cell. Count reruns with composite (recomputed per §3.1 Gate 5) ≥ Haiku modal-winner mean. Twice-failed reruns count as 0 (per §3.1 single-cell drop rule). Denominator is fixed at 5. Pass if both counts ≥ 3/5 for at least 2 of 3 domains.
 
 - **H3:** for each of D1, D2, D3 where H6 passed, run `scipy.stats.binomtest(target_count, 20, 0.25, alternative='greater')`. Pass if p < 0.0125 for at least 2 of 3 domains.
 
@@ -372,14 +411,24 @@ On abort, write `docs/null-model-validation-abort.md`: trigger, partial data, wh
 
 ## 11. Changelog
 
-### v2 → v3 (this version)
+### v3 → v4 (this version)
 
-Addresses autoimprove#105 findings from MATRIX_5 (postbox hook, 2026-04-16):
+Addresses Codex round-4 review of v3:
+
+| # | v3 flaw | v4 fix |
+|---|---------|--------|
+| 11 | Lexical gate self-contradicted the env blocks it introduced: D1 env block contained "cache infrastructure"; D0 env block contained "rollback"; both were in the banned-token list. Gate would abort by construction. | §3 lexical gate now scans ONLY model-generated text (`mechanism_novelty`, `dealbreaker`), not the prompt. The prompt's env block can mention vocabulary that the model is forbidden from re-using. |
+| 12 | Schema validator only checked dimension key-set + convention string. Did not verify score types or 1-10 bounds, did not recompute composite, did not check dealbreaker grounding. Corrupt outputs counted as `ok`. | §3.1 expanded from 2 gates to 7 gates: parse, schema, convention, **score-int-in-bounds**, **composite-recompute (model value discarded)**, **banned-token scan on output**, **dealbreaker infrastructure grounding (must appear in env block)**. |
+| 13 | H2 ran single-cell reruns (Sonnet/Opus) but the drop rule required ≥2 failed cells to mark a rerun dropped. Single-cell reruns could fail twice and leave a missing composite with no analysis-time semantics — free choice at score time. | §3.1 explicit rule: single-cell reruns that fail twice count as **0 in the fixed 5-run denominator** (a miss). §7 H2 description references this rule explicitly. |
+
+### v2 → v3 (commit 25b35e4)
+
+Addressed autoimprove#105 findings from MATRIX_5:
 
 | # | v2 flaw | v3 fix |
 |---|---------|--------|
-| 9 | Assumed prompt-only schema discipline worked. MATRIX_5 disproved: 4/9 cells invented extra dimensions (5-7 dims instead of 4). | §3 template now includes explicit "Your output will be schema-validated and rejected" + enumeration of forbidden dimension names. §3.1 adds schema validation procedure with re-dispatch and drop rules. H6 enforces ≥80% conformance as prerequisite for H1/H3. |
-| 10 | Neutral prompts lacked codebase infrastructure context, leading haiku to hallucinate dealbreakers (L8). | §2.2 introduces Environment Blocks; each domain pre-registers one in §2. §3 template has mandatory "Available Infrastructure" section. Dealbreakers citing non-listed infrastructure are rejected. |
+| 9 | Assumed prompt-only schema discipline worked. MATRIX_5 disproved: 4/9 cells invented extra dimensions (5-7 dims instead of 4). | §3 template includes explicit "Your output will be schema-validated and rejected" + enumeration of forbidden dimension names. §3.1 adds schema validation procedure. H6 enforces ≥80% conformance. |
+| 10 | Neutral prompts lacked codebase infrastructure context, leading haiku to hallucinate dealbreakers (L8). | §2.2 introduces Environment Blocks; each domain pre-registers one in §2. §3 template has mandatory "Available Infrastructure" section. |
 
 ### v1 → v2 (commit c9ffd33)
 
