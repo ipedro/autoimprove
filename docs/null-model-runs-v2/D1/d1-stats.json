@@ -1,0 +1,370 @@
+{
+  "domain": "D1",
+  "fix_a": true,
+  "fix_b": true,
+  "total_cells_dispatched": 180,
+  "ok_cells": 51,
+  "h6_rate": 0.2833,
+  "h6_pass": false,
+  "valid_reruns": 0,
+  "total_reruns": 20,
+  "h7_rate": 0.0,
+  "h7_pass": false,
+  "category_counts": {
+    "other": 20
+  },
+  "most_frequent_category": "other",
+  "most_frequent_count": 20,
+  "target_category": "out-of-process-shared",
+  "target_count": 0,
+  "h1_pass": false,
+  "h3_pvalue": 1.0,
+  "h3_pass": false,
+  "h5_pvalue": null,
+  "h5_pass": null,
+  "diagnostic_position_counts": {},
+  "diagnostic_label_counts": {},
+  "diagnostic_semantic_counts": {},
+  "summaries": [
+    {
+      "rerun": 1,
+      "domain": "D1",
+      "permutation": [
+        "in-process-private",
+        "out-of-process-shared",
+        "source-replica"
+      ],
+      "ok_cells": 1,
+      "dropped_cells": 8,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 2,
+      "domain": "D1",
+      "permutation": [
+        "in-process-private",
+        "source-replica",
+        "out-of-process-shared"
+      ],
+      "ok_cells": 3,
+      "dropped_cells": 6,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 3,
+      "domain": "D1",
+      "permutation": [
+        "out-of-process-shared",
+        "in-process-private",
+        "source-replica"
+      ],
+      "ok_cells": 3,
+      "dropped_cells": 6,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 4,
+      "domain": "D1",
+      "permutation": [
+        "out-of-process-shared",
+        "source-replica",
+        "in-process-private"
+      ],
+      "ok_cells": 4,
+      "dropped_cells": 5,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 5,
+      "domain": "D1",
+      "permutation": [
+        "source-replica",
+        "in-process-private",
+        "out-of-process-shared"
+      ],
+      "ok_cells": 3,
+      "dropped_cells": 6,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 6,
+      "domain": "D1",
+      "permutation": [
+        "source-replica",
+        "out-of-process-shared",
+        "in-process-private"
+      ],
+      "ok_cells": 1,
+      "dropped_cells": 8,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 7,
+      "domain": "D1",
+      "permutation": [
+        "out-of-process-shared",
+        "in-process-private",
+        "source-replica"
+      ],
+      "ok_cells": 4,
+      "dropped_cells": 5,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 8,
+      "domain": "D1",
+      "permutation": [
+        "source-replica",
+        "in-process-private",
+        "out-of-process-shared"
+      ],
+      "ok_cells": 3,
+      "dropped_cells": 6,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 9,
+      "domain": "D1",
+      "permutation": [
+        "in-process-private",
+        "out-of-process-shared",
+        "source-replica"
+      ],
+      "ok_cells": 1,
+      "dropped_cells": 8,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 10,
+      "domain": "D1",
+      "permutation": [
+        "source-replica",
+        "out-of-process-shared",
+        "in-process-private"
+      ],
+      "ok_cells": 4,
+      "dropped_cells": 5,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 11,
+      "domain": "D1",
+      "permutation": [
+        "in-process-private",
+        "source-replica",
+        "out-of-process-shared"
+      ],
+      "ok_cells": 3,
+      "dropped_cells": 6,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 12,
+      "domain": "D1",
+      "permutation": [
+        "out-of-process-shared",
+        "source-replica",
+        "in-process-private"
+      ],
+      "ok_cells": 1,
+      "dropped_cells": 8,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 13,
+      "domain": "D1",
+      "permutation": [
+        "source-replica",
+        "out-of-process-shared",
+        "in-process-private"
+      ],
+      "ok_cells": 1,
+      "dropped_cells": 8,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 14,
+      "domain": "D1",
+      "permutation": [
+        "out-of-process-shared",
+        "source-replica",
+        "in-process-private"
+      ],
+      "ok_cells": 3,
+      "dropped_cells": 6,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 15,
+      "domain": "D1",
+      "permutation": [
+        "in-process-private",
+        "source-replica",
+        "out-of-process-shared"
+      ],
+      "ok_cells": 4,
+      "dropped_cells": 5,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 16,
+      "domain": "D1",
+      "permutation": [
+        "source-replica",
+        "in-process-private",
+        "out-of-process-shared"
+      ],
+      "ok_cells": 2,
+      "dropped_cells": 7,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 17,
+      "domain": "D1",
+      "permutation": [
+        "out-of-process-shared",
+        "in-process-private",
+        "source-replica"
+      ],
+      "ok_cells": 2,
+      "dropped_cells": 7,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 18,
+      "domain": "D1",
+      "permutation": [
+        "in-process-private",
+        "out-of-process-shared",
+        "source-replica"
+      ],
+      "ok_cells": 3,
+      "dropped_cells": 6,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 19,
+      "domain": "D1",
+      "permutation": [
+        "in-process-private",
+        "out-of-process-shared",
+        "source-replica"
+      ],
+      "ok_cells": 3,
+      "dropped_cells": 6,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 20,
+      "domain": "D1",
+      "permutation": [
+        "out-of-process-shared",
+        "source-replica",
+        "in-process-private"
+      ],
+      "ok_cells": 2,
+      "dropped_cells": 7,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    }
+  ]
+}

@@ -1,0 +1,385 @@
+{
+  "domain": "D2",
+  "fix_a": true,
+  "fix_b": true,
+  "total_cells_dispatched": 180,
+  "ok_cells": 179,
+  "h6_rate": 0.9944,
+  "h6_pass": true,
+  "valid_reruns": 19,
+  "total_reruns": 20,
+  "h7_rate": 0.95,
+  "h7_pass": true,
+  "category_counts": {
+    "parallel-build-then-swap": 14,
+    "other": 2,
+    "lock-and-mutate": 2,
+    "incremental-reconcile": 2
+  },
+  "most_frequent_category": "parallel-build-then-swap",
+  "most_frequent_count": 14,
+  "target_category": "parallel-build-then-swap",
+  "target_count": 14,
+  "h1_pass": true,
+  "h3_pvalue": 3e-05,
+  "h3_pass": true,
+  "h5_pvalue": null,
+  "h5_pass": null,
+  "diagnostic_position_counts": {
+    "2": 5,
+    "3": 5,
+    "1": 8
+  },
+  "diagnostic_label_counts": {
+    "B": 5,
+    "C": 5,
+    "A": 8
+  },
+  "diagnostic_semantic_counts": {
+    "parallel-build-then-swap": 14,
+    "lock-and-mutate": 2,
+    "incremental-reconcile": 2
+  },
+  "summaries": [
+    {
+      "rerun": 1,
+      "domain": "D2",
+      "permutation": [
+        "lock-and-mutate",
+        "parallel-build-then-swap",
+        "incremental-reconcile"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 6.0,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 2,
+      "domain": "D2",
+      "permutation": [
+        "lock-and-mutate",
+        "incremental-reconcile",
+        "parallel-build-then-swap"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 3,
+      "solo_winner_label": "C",
+      "solo_winner_composite": 6.25,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 3,
+      "domain": "D2",
+      "permutation": [
+        "parallel-build-then-swap",
+        "lock-and-mutate",
+        "incremental-reconcile"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 6.5,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 4,
+      "domain": "D2",
+      "permutation": [
+        "parallel-build-then-swap",
+        "incremental-reconcile",
+        "lock-and-mutate"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 6.0,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 5,
+      "domain": "D2",
+      "permutation": [
+        "incremental-reconcile",
+        "lock-and-mutate",
+        "parallel-build-then-swap"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": true
+    },
+    {
+      "rerun": 6,
+      "domain": "D2",
+      "permutation": [
+        "incremental-reconcile",
+        "parallel-build-then-swap",
+        "lock-and-mutate"
+      ],
+      "ok_cells": 8,
+      "dropped_cells": 1,
+      "valid": false,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": false
+    },
+    {
+      "rerun": 7,
+      "domain": "D2",
+      "permutation": [
+        "parallel-build-then-swap",
+        "lock-and-mutate",
+        "incremental-reconcile"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 5.5,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 8,
+      "domain": "D2",
+      "permutation": [
+        "incremental-reconcile",
+        "lock-and-mutate",
+        "parallel-build-then-swap"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 5.5,
+      "solo_winner_category": "lock-and-mutate",
+      "solo_tie": false
+    },
+    {
+      "rerun": 9,
+      "domain": "D2",
+      "permutation": [
+        "lock-and-mutate",
+        "parallel-build-then-swap",
+        "incremental-reconcile"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 6.25,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 10,
+      "domain": "D2",
+      "permutation": [
+        "incremental-reconcile",
+        "parallel-build-then-swap",
+        "lock-and-mutate"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 6.0,
+      "solo_winner_category": "incremental-reconcile",
+      "solo_tie": false
+    },
+    {
+      "rerun": 11,
+      "domain": "D2",
+      "permutation": [
+        "lock-and-mutate",
+        "incremental-reconcile",
+        "parallel-build-then-swap"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 3,
+      "solo_winner_label": "C",
+      "solo_winner_composite": 6.25,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 12,
+      "domain": "D2",
+      "permutation": [
+        "parallel-build-then-swap",
+        "incremental-reconcile",
+        "lock-and-mutate"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 3,
+      "solo_winner_label": "C",
+      "solo_winner_composite": 5.75,
+      "solo_winner_category": "lock-and-mutate",
+      "solo_tie": false
+    },
+    {
+      "rerun": 13,
+      "domain": "D2",
+      "permutation": [
+        "incremental-reconcile",
+        "parallel-build-then-swap",
+        "lock-and-mutate"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 6.0,
+      "solo_winner_category": "incremental-reconcile",
+      "solo_tie": false
+    },
+    {
+      "rerun": 14,
+      "domain": "D2",
+      "permutation": [
+        "parallel-build-then-swap",
+        "incremental-reconcile",
+        "lock-and-mutate"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 6.5,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 15,
+      "domain": "D2",
+      "permutation": [
+        "lock-and-mutate",
+        "incremental-reconcile",
+        "parallel-build-then-swap"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 3,
+      "solo_winner_label": "C",
+      "solo_winner_composite": 7.25,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 16,
+      "domain": "D2",
+      "permutation": [
+        "incremental-reconcile",
+        "lock-and-mutate",
+        "parallel-build-then-swap"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 3,
+      "solo_winner_label": "C",
+      "solo_winner_composite": 6.25,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 17,
+      "domain": "D2",
+      "permutation": [
+        "parallel-build-then-swap",
+        "lock-and-mutate",
+        "incremental-reconcile"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 5.75,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 18,
+      "domain": "D2",
+      "permutation": [
+        "lock-and-mutate",
+        "parallel-build-then-swap",
+        "incremental-reconcile"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 6.0,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 19,
+      "domain": "D2",
+      "permutation": [
+        "lock-and-mutate",
+        "parallel-build-then-swap",
+        "incremental-reconcile"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 7.25,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    },
+    {
+      "rerun": 20,
+      "domain": "D2",
+      "permutation": [
+        "parallel-build-then-swap",
+        "incremental-reconcile",
+        "lock-and-mutate"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 6.25,
+      "solo_winner_category": "parallel-build-then-swap",
+      "solo_tie": false
+    }
+  ]
+}

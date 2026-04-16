@@ -1,6 +1,6 @@
 # Null-Model Validation of Idea-Matrix — Preregistered Protocol
 
-**Version:** 10.1 (2026-04-16, post-Codex round-11 wording sync)
+**Version:** 10.3 (2026-04-16, post-Fix-B-generalization Amendment 3)
 **Status:** awaiting execution (budget-gated to post-reset)
 **Budget estimate:** ~$8-9, 3-5h
 **Previous versions:**
@@ -425,6 +425,54 @@ Any change post-execution-start requires:
 3. Note affected hypotheses.
 4. **Amendment counts as failure for any hypothesis where it relaxes a threshold or substitutes a test.** Blocks move-the-goalposts.
 
+### Amendment 3 (2026-04-16, pre-FASE-2, Fix B generalization to D1/D2/D3)
+
+**Affected procedure:** §3 prompt construction for D1, D2, D3 (extends Amendment 2's D0-scoped Fix B to all real domains). §7 H1/H3 semantic lookup via per-rerun permutation.
+
+**Justification:** D0 fresh run (2026-04-16, v10.2) validated Fix A + Fix B: H5 p=0.3828, H6=H7=100%. Per-domain diagnostics showed balanced category distribution (morning 3, afternoon 5, evening 6, other 6). The primacy-bias mechanism documented in Amendment 2 (Haiku favoring first-listed option) is a MODEL characteristic, not a domain-specific artifact. Running D1/D2/D3 without Fix B would leave those domains vulnerable to the same confound. Even if H1/H3 passed there under old prompts, the evidence would be ambiguous: we could not distinguish "matrix concentrates on target category" from "matrix concentrates on whatever is listed as Label A, which happens to be the target in our fixed prompt design."
+
+Note: for D1, D2, D3 the protocol pre-registers target=option B in every domain. If Label B naturally wins from position-bias alone (without Fix B), we'd see a confounded positive result with no way to diagnose. Fix B generalization is therefore mandatory for H1/H3 validity in D1/D2/D3, not optional.
+
+**Resolution (Fix B generalization):**
+- Same pre-registered balanced sequence of 20 permutations used in D0 is applied to D1/D2/D3.
+- Per-rerun, the mapping between labels (A, B, C) and semantic option keys (e.g., `out-of-process-shared`) is rotated.
+- H1/H3 aggregation resolves each rerun's solo-winner `solo_winner_label` → semantic key via permutation → category via `semantic_to_category` mapping.
+- Target-category testing is UNCHANGED: count reruns whose solo-winner semantic category == pre-registered target; threshold 14/20 for H1, binomial p<0.0125 for H3.
+
+Implementation: `/tmp/null-model-runs-v2/common.py` (shared permutation and aggregation) with per-domain configs at `/tmp/null-model-runs-v2/D{1,2,3}/toolkit.py`.
+
+**Hypotheses affected:** H1, H3. No threshold change; no test substitution. The analysis code's only update is resolving winner label → semantic category via permutation lookup before bucketing.
+
+**§8 rule 4 check:** Amendment does NOT relax any threshold and does NOT substitute any test. It eliminates a confound that would have inflated false positives for any domain targeting a fixed label position. Therefore Amendment 3 does NOT count as hypothesis failure.
+
+**Scope limit:** Same as Amendment 2 — if H1/H3 fail on v10.3 fresh runs, the protocol aborts per §10. No further prompt-level fixes will be attempted without full re-pre-registration.
+
+### Amendment 2 (2026-04-16, pre-FASE-1-fresh-run, Fix B — per-rerun balanced permutation)
+
+**Affected procedure:** §3 prompt construction (option ordering) and §7 H5 aggregation (semantic-category lookup via permutation).
+
+**Justification:** Post-abort sanity-check of v10.1 Fix A on the existing `/tmp/null-model-runs/D0/` dataset (n=20) showed H5 passing at p=0.0138 (margin 0.0013 over the 0.0125 threshold) but with a strong residual primacy bias in the underlying data:
+- Among the 10 reruns with a clear solo winner (ties broken by composite), **9/10** had Label A (first-listed option, fixed as `morning`) winning.
+- Under H0 (uniform p=1/3 over A/B/C among non-tied reruns), P(X≥9 in 10) ≈ 5.4e-4 — highly significant.
+- H5 passed only because the other 10/20 reruns were ties → "other" absorbed half the mass. The p-value was one "morning win" away from failing.
+
+Primacy bias is an implementation flaw distinct from the synergy_potential tautology Fix A addresses. Proceeding to a fresh FASE 1 run without correcting primacy bias would leave the null baseline ambiguous: a p=0.0039 failure would not distinguish "matrix fabricates structure" from "Haiku favors first-listed option."
+
+**Resolution (Fix B):** The prompt for each rerun randomizes the mapping between labels (A, B, C) and semantic options (morning, afternoon, evening) according to a pre-registered balanced sequence. The sequence is 3 blocks of 6 perms (each of the 6 permutations appears once per block, shuffled) plus 2 bonus reruns. Max imbalance across 20 reruns: any (label, semantic) pairing appears between 6 and 7 times.
+
+- Label order in "All Options Under Consideration" section remains A, B, C (listing position stays constant).
+- Semantic assignment to labels varies per rerun.
+- H5 aggregation looks up the SEMANTIC category of the solo winner via the per-rerun permutation.
+- Diagnostic outputs include both position counts (wins per cell number) and label counts (wins per label) so residual primacy bias is observable even if H5 passes.
+
+Implementation: `/tmp/null-model-runs-v2/D0/toolkit.py` (`permutation_for_rerun` + `_PRE_REGISTERED_SEQUENCE`).
+
+**Hypotheses affected:** H5. Test and threshold unchanged: exact binomial on most-frequent-semantic-category count vs p₀=0.25, pass iff p ≥ 0.0125. Fix B HARDENS the null model (removes a confound that was inflating "other" via ties AND masking primacy bias); it does NOT relax any threshold.
+
+**Relative to §8 rule 4 ("amendment counts as failure if it relaxes a threshold or substitutes a test"):** this amendment does neither. It changes prompt construction to eliminate a confounded structural bias that v10.1 Fix A left in place. Therefore Amendment 2 does NOT count as a hypothesis failure.
+
+**Scope limit:** Fix B is the final prompt-level correction for this validation cycle. If H5 fails on the fresh v10.2 D0 run, protocol aborts per §6 and FASE 2 does not proceed. No further prompt-level fixes will be attempted without a full pre-registration cycle.
+
 ### Amendment 1 (2026-04-16, pre-execution, commits d58a2e9 + 4f888ce + ddca208)
 
 **Affected procedure:** H2 Haiku scoring path in §3.1.
@@ -466,7 +514,15 @@ On abort, write `docs/null-model-validation-abort.md`: trigger, partial data, wh
 
 ## 11. Changelog
 
-### v10 → v10.1 (this version, protocol amendment — resolves execution-significant ambiguity)
+### v10.2 → v10.3 (this version, protocol amendment — generalizes Fix B to D1/D2/D3)
+
+After D0 validated under Fix A + Fix B (p=0.38, H6=H7=100%), Amendment 3 extends Fix B's per-rerun balanced permutation to D1, D2, D3 for H1/H3 validity. Threshold and tests unchanged; aggregation resolves label→semantic→category via permutation lookup. Full audit trail in §8 Amendment 3.
+
+### v10.1 → v10.2 (previous version, protocol amendment — eliminates primacy bias)
+
+Post-v10.1 Fix A sanity-check on existing n=20 D0 data surfaced a residual primacy bias (morning/Label-A winning 9/10 non-tied solos, p≈5e-4 under uniform). Amendment 2 adds Fix B — per-rerun balanced permutation of label↔semantic mapping — to harden the null baseline. Hypothesis definitions and thresholds unchanged; only prompt construction and aggregation's semantic lookup change. Full audit trail in §8 Amendment 2.
+
+### v10 → v10.1 (previous version, protocol amendment — resolves execution-significant ambiguity)
 
 Codex round-11 found that v10 introduced the 16-winner-bearing Haiku floor in §1 and §7 but left a stale v9-era paragraph in §3.1 describing Haiku H2 as "drop-and-aggregate, fail only if remaining list is empty or has no unique mode". The §1/§7 rule and the §3.1 description could produce different H2 pass/fail outcomes on the same Haiku data. This is an execution-significant ambiguity, not a non-semantic cleanup.
 

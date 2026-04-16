@@ -1,0 +1,416 @@
+{
+  "domain": "D0",
+  "fix_a": true,
+  "fix_b": true,
+  "total_cells_dispatched": 180,
+  "ok_cells": 180,
+  "h6_rate": 1.0,
+  "h6_pass": true,
+  "valid_reruns": 20,
+  "total_reruns": 20,
+  "h7_rate": 1.0,
+  "h7_pass": true,
+  "category_counts": {
+    "afternoon": 5,
+    "evening": 6,
+    "other": 6,
+    "morning": 3
+  },
+  "most_frequent_category": "evening",
+  "most_frequent_count": 6,
+  "h5_pvalue": 0.382827,
+  "h5_pass": true,
+  "h5_interpretation": "PASS \u2014 uniformity not rejected (null model clean under Fix A+B)",
+  "diagnostic_position_counts": {
+    "2": 7,
+    "1": 4,
+    "3": 3
+  },
+  "diagnostic_label_counts": {
+    "B": 7,
+    "A": 4,
+    "C": 3
+  },
+  "summaries": [
+    {
+      "rerun": 1,
+      "permutation": [
+        "morning",
+        "afternoon",
+        "evening"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 8.5,
+      "solo_winner_category": "afternoon",
+      "solo_tie": false,
+      "overall_winner_cell": 2,
+      "overall_winner_label": "B",
+      "overall_tie": false
+    },
+    {
+      "rerun": 2,
+      "permutation": [
+        "morning",
+        "evening",
+        "afternoon"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 8.5,
+      "solo_winner_category": "evening",
+      "solo_tie": false,
+      "overall_winner_cell": 2,
+      "overall_winner_label": "B",
+      "overall_tie": false
+    },
+    {
+      "rerun": 3,
+      "permutation": [
+        "afternoon",
+        "morning",
+        "evening"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 9.0,
+      "solo_winner_category": "afternoon",
+      "solo_tie": false,
+      "overall_winner_cell": 1,
+      "overall_winner_label": "A",
+      "overall_tie": false
+    },
+    {
+      "rerun": 4,
+      "permutation": [
+        "afternoon",
+        "evening",
+        "morning"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 8.25,
+      "solo_winner_category": "evening",
+      "solo_tie": false,
+      "overall_winner_cell": 2,
+      "overall_winner_label": "B",
+      "overall_tie": false
+    },
+    {
+      "rerun": 5,
+      "permutation": [
+        "evening",
+        "morning",
+        "afternoon"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": true,
+      "overall_winner_cell": null,
+      "overall_winner_label": null,
+      "overall_tie": true
+    },
+    {
+      "rerun": 6,
+      "permutation": [
+        "evening",
+        "afternoon",
+        "morning"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 8.5,
+      "solo_winner_category": "afternoon",
+      "solo_tie": false,
+      "overall_winner_cell": 2,
+      "overall_winner_label": "B",
+      "overall_tie": false
+    },
+    {
+      "rerun": 7,
+      "permutation": [
+        "afternoon",
+        "morning",
+        "evening"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 3,
+      "solo_winner_label": "C",
+      "solo_winner_composite": 7.75,
+      "solo_winner_category": "evening",
+      "solo_tie": false,
+      "overall_winner_cell": 3,
+      "overall_winner_label": "C",
+      "overall_tie": false
+    },
+    {
+      "rerun": 8,
+      "permutation": [
+        "evening",
+        "morning",
+        "afternoon"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": true,
+      "overall_winner_cell": null,
+      "overall_winner_label": null,
+      "overall_tie": true
+    },
+    {
+      "rerun": 9,
+      "permutation": [
+        "morning",
+        "afternoon",
+        "evening"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": true,
+      "overall_winner_cell": null,
+      "overall_winner_label": null,
+      "overall_tie": true
+    },
+    {
+      "rerun": 10,
+      "permutation": [
+        "evening",
+        "afternoon",
+        "morning"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 3,
+      "solo_winner_label": "C",
+      "solo_winner_composite": 8.25,
+      "solo_winner_category": "morning",
+      "solo_tie": false,
+      "overall_winner_cell": 3,
+      "overall_winner_label": "C",
+      "overall_tie": false
+    },
+    {
+      "rerun": 11,
+      "permutation": [
+        "morning",
+        "evening",
+        "afternoon"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": true,
+      "overall_winner_cell": null,
+      "overall_winner_label": null,
+      "overall_tie": true
+    },
+    {
+      "rerun": 12,
+      "permutation": [
+        "afternoon",
+        "evening",
+        "morning"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 8.25,
+      "solo_winner_category": "evening",
+      "solo_tie": false,
+      "overall_winner_cell": 2,
+      "overall_winner_label": "B",
+      "overall_tie": false
+    },
+    {
+      "rerun": 13,
+      "permutation": [
+        "evening",
+        "afternoon",
+        "morning"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": true,
+      "overall_winner_cell": null,
+      "overall_winner_label": null,
+      "overall_tie": true
+    },
+    {
+      "rerun": 14,
+      "permutation": [
+        "afternoon",
+        "evening",
+        "morning"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 3,
+      "solo_winner_label": "C",
+      "solo_winner_composite": 8.25,
+      "solo_winner_category": "morning",
+      "solo_tie": false,
+      "overall_winner_cell": 3,
+      "overall_winner_label": "C",
+      "overall_tie": false
+    },
+    {
+      "rerun": 15,
+      "permutation": [
+        "morning",
+        "evening",
+        "afternoon"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 8.5,
+      "solo_winner_category": "evening",
+      "solo_tie": false,
+      "overall_winner_cell": 2,
+      "overall_winner_label": "B",
+      "overall_tie": false
+    },
+    {
+      "rerun": 16,
+      "permutation": [
+        "evening",
+        "morning",
+        "afternoon"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 8.75,
+      "solo_winner_category": "evening",
+      "solo_tie": false,
+      "overall_winner_cell": 1,
+      "overall_winner_label": "A",
+      "overall_tie": false
+    },
+    {
+      "rerun": 17,
+      "permutation": [
+        "afternoon",
+        "morning",
+        "evening"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 8.75,
+      "solo_winner_category": "afternoon",
+      "solo_tie": false,
+      "overall_winner_cell": 1,
+      "overall_winner_label": "A",
+      "overall_tie": false
+    },
+    {
+      "rerun": 18,
+      "permutation": [
+        "morning",
+        "afternoon",
+        "evening"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 2,
+      "solo_winner_label": "B",
+      "solo_winner_composite": 9.0,
+      "solo_winner_category": "afternoon",
+      "solo_tie": false,
+      "overall_winner_cell": 2,
+      "overall_winner_label": "B",
+      "overall_tie": false
+    },
+    {
+      "rerun": 19,
+      "permutation": [
+        "morning",
+        "afternoon",
+        "evening"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": 1,
+      "solo_winner_label": "A",
+      "solo_winner_composite": 8.0,
+      "solo_winner_category": "morning",
+      "solo_tie": false,
+      "overall_winner_cell": 1,
+      "overall_winner_label": "A",
+      "overall_tie": false
+    },
+    {
+      "rerun": 20,
+      "permutation": [
+        "afternoon",
+        "evening",
+        "morning"
+      ],
+      "ok_cells": 9,
+      "dropped_cells": 0,
+      "valid": true,
+      "solo_winner_cell": null,
+      "solo_winner_label": null,
+      "solo_winner_composite": null,
+      "solo_winner_category": null,
+      "solo_tie": true,
+      "overall_winner_cell": null,
+      "overall_winner_label": null,
+      "overall_tie": true
+    }
+  ]
+}
