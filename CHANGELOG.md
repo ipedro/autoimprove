@@ -2,6 +2,18 @@
 
 All notable changes to autoimprove are documented here.
 
+## [0.7.1] — 2026-04-16 — idea-matrix falsification + schema enforcement
+
+### Added
+- `feat(idea-matrix)`: post-matrix falsification test (step 6d.7) — re-dispatches Cell 8 and Cell 9 with neutral prompts to classify winner as `strong` (same mechanism category + specific), `framing_dependent` (same category, different specific), or `falsified` (different category). Closes #104.
+- `feat(idea-matrix)`: `ENV_BLOCK` / "Available Infrastructure" section (step 3d + template) — pre-registered deployment context prevents dealbreaker hallucination about infrastructure that is or is not present. Closes #105 L8.
+
+### Fixed
+- `fix(idea-matrix)`: schema enforcement in step 5 (3 → 5 gates) — exact 4-dimension schema, convention declaration, score bounds, dealbreaker grounding against `ENV_BLOCK`. Re-dispatch once with named-failure preamble, then drop cell. Tracks `schema_conformance_rate`. Closes #105 L7.
+
+### Changed
+- `chore(idea-matrix)`: structured JSON (step 6e) and `convergence.json` telemetry (step 8) now include `post_matrix_falsification` and `schema_conformance_rate` fields.
+
 ## [0.7.0] — 2026-04-16 — idea-matrix Fix A + null-model validation
 
 Breaking: idea-matrix output schema changed (ranking → rankings, by_score_band → by_score_band_solo, dealbreakers → dealbreakers_solo) to eliminate structural bias where `synergy_potential` tautologically favored combo cells. Surfaced by the null-model validation experiment (D0 synthetic control failed H5, p=2.95e-05).
