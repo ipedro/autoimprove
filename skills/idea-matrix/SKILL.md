@@ -60,6 +60,21 @@ OPTIONS = [
 ]
 ```
 
+**1b. Generate presentation permutation (Fix B — addresses #106, primacy bias):**
+
+Haiku systematically favors the first-listed option. Null-model D0 showed morning (cell 1/A, first-listed) winning 9/10 non-tied solos (p ≈ 5.4×10⁻⁴). Fix B randomizes option order per matrix run.
+
+Generate a random permutation of the base options (e.g., for 3 options: one of 6 possible orderings of [A, B, C]). Store as:
+
+```
+PERMUTATION = [<shuffled indices>]  # e.g., [2, 0, 1] means C is presented first, A second, B third
+PRESENTED_OPTIONS = OPTIONS reordered by PERMUTATION
+```
+
+All downstream references to "options" in cell prompts use `PRESENTED_OPTIONS` (permuted order). The `OPTIONS` array (original order) is preserved for aggregation — winner identification uses semantic content (option name/description), not positional label.
+
+**Why this matters:** without permutation, cell 1 (first solo) wins disproportionately regardless of content. Fix B decorrelates option quality from presentation position. Cost: zero — just reordering prompt text. Empirically validated in null-model D0 (p=0.38 post-Fix B vs p=0.014 pre-Fix B) and D2 (label distribution A:8, B:5, C:5 — balanced).
+
 ---
 
 # 2. Generate the 3x3 Matrix Cells
@@ -68,17 +83,19 @@ From the options list, generate exactly 9 exploration cells. The matrix is **opt
 
 **For 3 base options (A, B, C):**
 
-| Cell | What the agent scores |
+| Cell | What the agent scores (using PRESENTED_OPTIONS order) |
 |------|----------------------|
-| 1. A alone | Option A in isolation — full assessment |
-| 2. B alone | Option B in isolation — full assessment |
-| 3. C alone | Option C in isolation — full assessment |
-| 4. A + B | Hybrid combining A and B — synergies and conflicts |
-| 5. A + C | Hybrid combining A and C — synergies and conflicts |
-| 6. B + C | Hybrid combining B and C — synergies and conflicts |
-| 7. A + B + C | All three combined — is the full stack viable? |
+| 1. Solo P[0] | `PRESENTED_OPTIONS[0]` in isolation — full assessment |
+| 2. Solo P[1] | `PRESENTED_OPTIONS[1]` in isolation — full assessment |
+| 3. Solo P[2] | `PRESENTED_OPTIONS[2]` in isolation — full assessment |
+| 4. P[0] + P[1] | Hybrid combining first two presented — synergies and conflicts |
+| 5. P[0] + P[2] | Hybrid combining first and third presented — synergies and conflicts |
+| 6. P[1] + P[2] | Hybrid combining second and third presented — synergies and conflicts |
+| 7. P[0] + P[1] + P[2] | All three combined — is the full stack viable? |
 | 8. Alt 1 | First alternative/variant (if provided), else best-of-breed remix from 1-7 |
 | 9. Alt 2 | Second alternative/variant (if provided), else contrarian approach |
+
+**Note:** cells reference `PRESENTED_OPTIONS` (permuted), not `OPTIONS` (original). This means cell 1 evaluates whichever option landed in position 0 after permutation — NOT always "Option A". The `PERMUTATION` array maps positions back to original labels for aggregation in step 6.
 
 **If the user provided more than 3 options** (e.g., 3 base + 2 alternatives), assign cells 8 and 9 to the provided alternatives.
 
@@ -201,8 +218,8 @@ You are an idea explorer scoring a specific design option or combination.
 
 Dealbreakers in your output MUST be grounded in the items listed above. Do not cite infrastructure, daemons, services, or invariants that are not named here — if a risk depends on something not in this block, the risk is hallucinated and the cell will be re-dispatched.
 
-## All Options Under Consideration
-{For each option: label, name, description}
+## All Options Under Consideration (presented in randomized order — Fix B)
+{For each option in PRESENTED_OPTIONS order: label, name, description}
 
 ## Your Assignment
 Cell {N}: {CELL_LABEL}
@@ -596,6 +613,8 @@ After the human-readable report, output the full structured data:
 ```json
 {
   "problem": "<problem statement>",
+  "permutation": [<PERMUTATION indices, e.g. [2, 0, 1]>],
+  "permutation_mapping": {"cell_1": "<original label>", "cell_2": "<original label>", "cell_3": "<original label>"},
   "options": [<OPTIONS array>],
   "cells": [<RESULTS array, all 9 with scores AND "type" field: "solo"|"combo"|"alt">],
   "rankings": {
@@ -786,6 +805,8 @@ Store: `MATRIX_RUN_DIR=~/.autoimprove/matrix-runs/<RUN_ID>`.
   "run_id": "<RUN_ID>",
   "problem": "<PROBLEM>",
   "options": [<OPTIONS array>],
+  "permutation": [<PERMUTATION indices>],
+  "permutation_mapping": {"cell_1": "<original label>", "cell_2": "<original label>", "cell_3": "<original label>"},
   "date": "<ISO 8601 datetime>",
   "model": "haiku",
   "brief_mode": <true|false>,
